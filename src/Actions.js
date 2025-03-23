@@ -1,13 +1,11 @@
 
 const ACTIONS = {
-  JOIN: "join",
-  JOINED: "joined",
-  DISCONNECTED: "disconnected",
-  CODE_CHANGE: "code-change",
-  SYNC_CODE: "sync-code",
-  LEAVE: "leave",
-  LANGUAGE_CHANGE: "language-change", // Added for language sync
+  JOIN: 'join',
+  JOINED: 'joined',
+  DISCONNECTED: 'disconnected',
+  CODE_CHANGE: 'code-change',
+  SYNC_CODE: 'sync-code',
+  LEAVE: 'leave',
 };
 
-module.exports = ACTIONS;
-// this node.js syntax for exports can be used in frontend and backend 
+export default ACTIONS;
