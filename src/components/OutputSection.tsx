@@ -1,7 +1,25 @@
 
 import React from 'react';
 
-const OutputSection = ({ outputDetails }) => {
+interface OutputStatus {
+  id?: number;
+  description?: string;
+}
+
+interface OutputDetails {
+  status?: OutputStatus;
+  stdout?: string;
+  stderr?: string;
+  compile_output?: string;
+  time?: string;
+  memory?: string;
+}
+
+interface OutputSectionProps {
+  outputDetails: OutputDetails | null;
+}
+
+const OutputSection: React.FC<OutputSectionProps> = ({ outputDetails }) => {
   return (
     <div className="output-section">
       <div className="output-label">

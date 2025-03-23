@@ -1,7 +1,12 @@
 
 import React from 'react';
 
-const InputSection = ({ stdin, setStdin }) => {
+interface InputSectionProps {
+  stdin: string;
+  setStdin: (stdin: string) => void;
+}
+
+const InputSection: React.FC<InputSectionProps> = ({ stdin, setStdin }) => {
   return (
     <div className="input-section">
       <div className="input-label">

@@ -16,8 +16,21 @@ export const languageOptions = [
   { id: 83, name: "Swift (5.1.3)" },
 ];
 
+interface SubmissionResult {
+  token?: string;
+  status?: {
+    id: number;
+    description: string;
+  };
+  stdout?: string;
+  stderr?: string;
+  compile_output?: string;
+  time?: string;
+  memory?: string;
+}
+
 // Function to submit code for compilation
-export const submitCode = async (languageId, sourceCode, stdin = "") => {
+export const submitCode = async (languageId: number, sourceCode: string, stdin: string = ""): Promise<SubmissionResult> => {
   const options = {
     method: "POST",
     headers: {
@@ -35,7 +48,7 @@ export const submitCode = async (languageId, sourceCode, stdin = "") => {
   try {
     // Submit the code and get the token
     const response = await fetch(`${JUDGE0_API_URL}/submissions`, options);
-    const result = await response.json();
+    const result = await response.json() as SubmissionResult;
     
     if (result.token) {
       return await getSubmissionResult(result.token);
@@ -49,7 +62,7 @@ export const submitCode = async (languageId, sourceCode, stdin = "") => {
 };
 
 // Function to get the result of a submission by token
-export const getSubmissionResult = async (token) => {
+export const getSubmissionResult = async (token: string): Promise<SubmissionResult> => {
   const options = {
     method: "GET",
     headers: {
@@ -60,11 +73,11 @@ export const getSubmissionResult = async (token) => {
 
   try {
     // Poll for the submission result until it's ready
-    let result = { status: { id: 1, description: "Processing" } };
+    let result: SubmissionResult = { status: { id: 1, description: "Processing" } };
     
     while (
-      result.status.id === 1 || // In Queue
-      result.status.id === 2    // Processing
+      result.status?.id === 1 || // In Queue
+      result.status?.id === 2    // Processing
     ) {
       const response = await fetch(
         `${JUDGE0_API_URL}/submissions/${token}`,
@@ -72,7 +85,7 @@ export const getSubmissionResult = async (token) => {
       );
       result = await response.json();
       
-      if (result.status.id !== 1 && result.status.id !== 2) {
+      if (result.status?.id !== 1 && result.status?.id !== 2) {
         break;
       }
       

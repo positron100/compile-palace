@@ -14,11 +14,21 @@ import "codemirror/lib/codemirror.css";
 import "codemirror/theme/dracula.css";
 import ACTIONS from "../Actions";
 
-const Editor = ({ socketRef, roomId, onCodeChange, language }) => {
-  const editorRef = useRef(null);
+interface EditorProps {
+  socketRef: React.MutableRefObject<any>;
+  roomId: string;
+  onCodeChange: (code: string) => void;
+  language: {
+    id: number;
+    name: string;
+  };
+}
+
+const Editor: React.FC<EditorProps> = ({ socketRef, roomId, onCodeChange, language }) => {
+  const editorRef = useRef<Codemirror.Editor | null>(null);
   
   // Set the appropriate mode based on the selected language
-  const getModeForLanguage = (langId) => {
+  const getModeForLanguage = (langId: number) => {
     switch(langId) {
       case 63: return { name: "javascript", json: true };
       case 71: return { name: "python" };
@@ -35,8 +45,11 @@ const Editor = ({ socketRef, roomId, onCodeChange, language }) => {
   // initializing code editor
   useEffect(() => {
     async function init() {
+      const textarea = document.getElementById("realtimeEditor");
+      if (!textarea) return;
+      
       editorRef.current = Codemirror.fromTextArea(
-        document.getElementById("realtimeEditor"),
+        textarea as HTMLTextAreaElement,
         {
           mode: getModeForLanguage(language?.id || 63),
           theme: "dracula",
@@ -52,7 +65,7 @@ const Editor = ({ socketRef, roomId, onCodeChange, language }) => {
         const { origin } = changes;
         const code = instance.getValue();
         onCodeChange(code);
-        if (origin !== "setValue") {
+        if (origin !== "setValue" && socketRef.current) {
           socketRef.current.emit(ACTIONS.CODE_CHANGE, {
             roomId,
             code,
@@ -75,9 +88,9 @@ const Editor = ({ socketRef, roomId, onCodeChange, language }) => {
     // listening for CODE_CHANGE event
     // recieving the changed code
     if (socketRef.current) {
-      socketRef.current.on(ACTIONS.CODE_CHANGE, ({ code }) => {
+      socketRef.current.on(ACTIONS.CODE_CHANGE, ({ code }: { code: string }) => {
         // if code is null then it will get deleted from the editor
-        if (code !== null) {
+        if (code !== null && editorRef.current) {
           // dynamically adding text to editor
           editorRef.current.setValue(code);
         }
@@ -85,8 +98,9 @@ const Editor = ({ socketRef, roomId, onCodeChange, language }) => {
     }
 
     return () => {
-      // eslint-disable-next-line
-      socketRef.current.off(ACTIONS.CODE_CHANGE);
+      if (socketRef.current) {
+        socketRef.current.off(ACTIONS.CODE_CHANGE);
+      }
     }
     // eslint-disable-next-line   
   }, [socketRef.current]);

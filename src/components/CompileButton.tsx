@@ -1,7 +1,12 @@
 
 import React from 'react';
 
-const CompileButton = ({ onClick, isCompiling }) => {
+interface CompileButtonProps {
+  onClick: () => void;
+  isCompiling: boolean;
+}
+
+const CompileButton: React.FC<CompileButtonProps> = ({ onClick, isCompiling }) => {
   return (
     <button
       className={`btn compileBtn ${isCompiling ? 'loading' : ''}`}

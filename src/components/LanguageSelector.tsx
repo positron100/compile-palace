@@ -2,7 +2,17 @@
 import React from 'react';
 import { languageOptions } from '../services/compileService';
 
-const LanguageSelector = ({ language, setLanguage }) => {
+interface Language {
+  id: number;
+  name: string;
+}
+
+interface LanguageSelectorProps {
+  language: Language;
+  setLanguage: (language: Language) => void;
+}
+
+const LanguageSelector: React.FC<LanguageSelectorProps> = ({ language, setLanguage }) => {
   return (
     <div className="language-selector">
       <select 
@@ -11,7 +21,9 @@ const LanguageSelector = ({ language, setLanguage }) => {
           const selectedLang = languageOptions.find(
             (lang) => lang.id === parseInt(e.target.value)
           );
-          setLanguage(selectedLang);
+          if (selectedLang) {
+            setLanguage(selectedLang);
+          }
         }}
         className="language-select"
       >
