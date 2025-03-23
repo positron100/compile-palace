@@ -99,3 +99,34 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* Animation for the background elements */
+@keyframes float {
+  0% {
+    transform: translateY(0) rotate(0deg);
+    opacity: 0.7;
+    border-radius: 10px;
+  }
+  100% {
+    transform: translateY(-100vh) rotate(360deg);
+    opacity: 0;
+    border-radius: 50%;
+  }
+}
+
+.squares li {
+  position: absolute;
+  display: block;
+  width: calc(20px + var(--i) * 10px);
+  height: calc(20px + var(--i) * 10px);
+  top: calc(100vh * var(--i) / 10);
+  left: calc(100vw * var(--j) / 6);
+  animation: float linear infinite;
+  animation-duration: calc(15s + var(--i) * 5s);
+}
+
+@layer utilities {
+  .animate-float {
+    animation: float linear infinite;
+  }
+}
