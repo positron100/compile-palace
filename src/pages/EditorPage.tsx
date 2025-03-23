@@ -17,6 +17,12 @@ import ACTIONS from "../Actions";
 import toast from "react-hot-toast";
 import { submitCode, languageOptions } from "../services/compileService";
 
+// Custom properties for TypeScript
+interface CustomCSSProperties extends React.CSSProperties {
+  "--i"?: string | number;
+  "--j"?: string | number;
+}
+
 function EditorPage() {
   // socket initialization
   const socketRef = useRef(null);
@@ -122,7 +128,7 @@ function EditorPage() {
 
   async function copyRoomId() {
     try {
-      await navigator.clipboard.writeText(roomId);
+      await navigator.clipboard.writeText(roomId || "");
       toast.success("RoomID copied to clipboard");
     } catch (err) {
       toast.error("could not copy RoomID");
@@ -143,9 +149,9 @@ function EditorPage() {
             <li
               key={idx}
               style={{
-                "--i": Math.random() * 10 + 1, // For vertical position and size
-                "--j": Math.random() * 7 + 1, // Random horizontal position (adjusted for containment)
-              }}
+                "--i": `${Math.random() * 10 + 1}`,
+                "--j": `${Math.random() * 7 + 1}`,
+              } as CustomCSSProperties}
             ></li>
           ))}
         </ul>
@@ -155,12 +161,9 @@ function EditorPage() {
           </div>
           <h3>Connected</h3>
           <div className="clientList">
-            {
-              // while iterating through array , must use key
-              clients.map((client) => (
-                <Client key={client.socketId} username={client.username} />
-              ))
-            }
+            {clients.map((client: any) => (
+              <Client key={client.socketId} username={client.username} />
+            ))}
           </div>
           
           <div className="compiler-controls">
@@ -184,7 +187,7 @@ function EditorPage() {
           {/* Editor component calling */}
           <Editor
             socketRef={socketRef}
-            roomId={roomId}
+            roomId={roomId || ""}
             language={language}
             onCodeChange={(code) => {
               codeRef.current = code;
