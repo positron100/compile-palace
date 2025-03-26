@@ -1,3 +1,4 @@
+
 import React, { useEffect, useRef, useState } from "react";
 import Client from "../components/Client";
 import Editor from "../components/Editor";
@@ -92,6 +93,7 @@ function EditorPage() {
               toast.success(`${username} joined the room`);
               console.log(`${username} joined `);
             }
+            console.log("Setting clients:", clients); // Debug log
             setClients(clients);
             console.log("Updated clients:", clients); // Add this to debug clients
 
@@ -168,9 +170,13 @@ function EditorPage() {
         <div className="mb-8">
           <h3 className="font-semibold text-gray-700 mb-3">Connected Users</h3>
           <div className="flex flex-wrap gap-3">
-            {clients.map((client) => (
-              <Client key={client.socketId} username={client.username} />
-            ))}
+            {clients.length > 0 ? (
+              clients.map((client) => (
+                <Client key={client.socketId} username={client.username} />
+              ))
+            ) : (
+              <span className="text-sm text-purple-400">No users connected yet...</span>
+            )}
           </div>
         </div>
         
@@ -250,23 +256,18 @@ function EditorPage() {
           </Button>
         </div>
 
-        {/* Animated squares section for the bottom area */}
+        {/* Animated squares section for the bottom area - Matching home page animation */}
         <div className="h-32 relative overflow-hidden bg-gradient-to-b from-purple-50 to-white">
-          {/* Animated squares - similar to login page */}
-          <ul className="absolute inset-0">
+          {/* Animated squares - using the same animation as login page */}
+          <ul className="squares">
             {Array.from({ length: 10 }).map((_, idx) => (
               <li
                 key={idx}
                 style={{
-                  position: 'absolute',
-                  width: `${Math.random() * 40 + 20}px`,
-                  height: `${Math.random() * 40 + 20}px`,
-                  left: `${Math.random() * 100}%`,
-                  top: `${Math.random() * 100}%`,
-                  animationDelay: generateRandomDelay(),
-                  opacity: Math.random() * 0.3 + 0.1,
-                }}
-                className="bg-purple-400 rounded-lg animate-float"
+                  "--i": Math.random() * 10 + 1,
+                  "--j": Math.random() * 7 + 1,
+                } as React.CSSProperties}
+                className="bg-indigo-500/20 absolute list-none rounded-lg animate-float"
               />
             ))}
           </ul>

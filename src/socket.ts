@@ -78,16 +78,41 @@ function mockSocket(): Socket {
     },
     emit: (event: string, ...args: any[]) => {
       console.log(`Mock socket emitted event: ${event}`, args);
+      
+      // For JOIN events, immediately trigger the JOINED response
+      if (event === 'join' && args[0]?.roomId && args[0]?.username) {
+        setTimeout(() => {
+          mockSocketBehavior(mockSocket as Socket);
+          if (mockSocket._callbacks && mockSocket._callbacks['joined']) {
+            mockSocket._callbacks['joined']({
+              clients: mockClients,
+              username: args[0].username,
+              socketId: mockSocket.id
+            });
+          }
+        }, 100);
+      }
+      
       return mockSocket;
     },
     disconnect: () => {
       console.log('Mock socket disconnected');
-    }
-  } as Socket;
+    },
+    
+    // For mock callbacks storage
+    _callbacks: {} as Record<string, Function>
+  } as any as Socket;
   
   mockSocketBehavior(mockSocket);
   return mockSocket;
 }
+
+// Mock clients for development
+const mockClients = [
+  { socketId: 'mock-1', username: 'User1' },
+  { socketId: 'mock-2', username: 'User2' },
+  { socketId: 'mock-3', username: 'User3' }
+];
 
 // Add mock behavior to simulate a real socket
 function mockSocketBehavior(socket: Socket): void {
@@ -100,26 +125,35 @@ function mockSocketBehavior(socket: Socket): void {
     LEAVE: 'leave',
   };
   
-  // Create mock clients list
-  const mockClients = [
-    { socketId: 'mock-1', username: 'User1' },
-    { socketId: 'mock-2', username: 'User2' }
-  ];
+  // Override the 'on' method to store callbacks
+  const originalOn = socket.on;
+  (socket as any)._callbacks = (socket as any)._callbacks || {};
+  
+  socket.on = function(event: string, callback: Function) {
+    console.log(`Mock socket registered event: ${event}`);
+    (socket as any)._callbacks[event] = callback;
+    return originalOn.call(this, event, callback);
+  };
   
   // Simulate JOIN response
   socket.on(ACTIONS.JOIN, ({ roomId, username }: { roomId: string, username: string }) => {
     console.log(`Mock user ${username} joined room ${roomId}`);
     
-    // Add the new user to mock clients
-    const newClient = { socketId: socket.id, username };
+    // Add the new user to mock clients if not already there
+    if (!mockClients.some(client => client.socketId === socket.id)) {
+      const newClient = { socketId: socket.id, username };
+      mockClients.push(newClient);
+    }
     
     // Simulate server response
     setTimeout(() => {
-      socket.emit(ACTIONS.JOINED, {
-        clients: [...mockClients, newClient],
-        username,
-        socketId: socket.id
-      });
+      if ((socket as any)._callbacks && (socket as any)._callbacks[ACTIONS.JOINED]) {
+        (socket as any)._callbacks[ACTIONS.JOINED]({
+          clients: mockClients,
+          username,
+          socketId: socket.id
+        });
+      }
     }, 500);
   });
   
@@ -128,7 +162,9 @@ function mockSocketBehavior(socket: Socket): void {
     console.log('Mock code change received:', code);
     // Echo back to all clients
     setTimeout(() => {
-      socket.emit(ACTIONS.CODE_CHANGE, { code });
+      if ((socket as any)._callbacks && (socket as any)._callbacks[ACTIONS.CODE_CHANGE]) {
+        (socket as any)._callbacks[ACTIONS.CODE_CHANGE]({ code });
+      }
     }, 100);
   });
 }

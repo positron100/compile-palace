@@ -33,7 +33,7 @@ const Client: React.FC<ClientProps> = ({ username }) => {
 
   return (
     <div className="flex flex-col items-center gap-1 my-1">
-      <Avatar className="h-10 w-10">
+      <Avatar className="h-10 w-10 border-2 border-white shadow-sm">
         <AvatarFallback className={`${avatarColor} text-white`}>
           {getInitials(username)}
         </AvatarFallback>
