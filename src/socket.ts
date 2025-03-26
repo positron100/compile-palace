@@ -1,5 +1,6 @@
 
 import { io, Socket } from 'socket.io-client';
+import { DefaultEventsMap } from 'socket.io/dist/typed-events';
 
 // For production, use a deployed backend URL
 // For development, use local server or mock
@@ -63,9 +64,9 @@ export const initSocket = async (): Promise<Socket> => {
 };
 
 // Mock socket implementation for development when server is not available
-function mockSocket(): Socket {
-  // @ts-ignore - Creating a minimal mock implementation
-  const mockSocket: Socket = {
+function mockSocket(): Socket<DefaultEventsMap, DefaultEventsMap> {
+  // Create a minimal mock implementation
+  const mockSocket = {
     connected: true,
     id: `mock-${Math.random().toString(36).substring(2, 9)}`,
     on: (event: string, callback: Function) => {
@@ -83,14 +84,14 @@ function mockSocket(): Socket {
     disconnect: () => {
       console.log('Mock socket disconnected');
     }
-  };
+  } as Socket<DefaultEventsMap, DefaultEventsMap>;
   
   mockSocketBehavior(mockSocket);
   return mockSocket;
 }
 
 // Add mock behavior to simulate a real socket
-function mockSocketBehavior(socket: any): void {
+function mockSocketBehavior(socket: Socket): void {
   const ACTIONS = {
     JOIN: 'join',
     JOINED: 'joined',
@@ -115,7 +116,6 @@ function mockSocketBehavior(socket: any): void {
     
     // Simulate server response
     setTimeout(() => {
-      // Fix: Changed from socket.on to socket.emit to properly emit the event
       socket.emit(ACTIONS.JOINED, {
         clients: [...mockClients, newClient],
         username,
@@ -129,7 +129,6 @@ function mockSocketBehavior(socket: any): void {
     console.log('Mock code change received:', code);
     // Echo back to all clients
     setTimeout(() => {
-      // Fix: Changed from socket.on to socket.emit to properly emit the event
       socket.emit(ACTIONS.CODE_CHANGE, { code });
     }, 100);
   });
