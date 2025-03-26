@@ -1,4 +1,3 @@
-
 import React, { useEffect, useRef, useState } from "react";
 import Client from "../components/Client";
 import Editor from "../components/Editor";
@@ -94,6 +93,7 @@ function EditorPage() {
               console.log(`${username} joined `);
             }
             setClients(clients);
+            console.log("Updated clients:", clients); // Add this to debug clients
 
             // sync code as soon as client joins
             socketRef.current.emit(ACTIONS.SYNC_CODE, {
@@ -168,7 +168,7 @@ function EditorPage() {
         <div className="mb-8">
           <h3 className="font-semibold text-gray-700 mb-3">Connected Users</h3>
           <div className="flex flex-wrap gap-3">
-            {clients.map((client: any) => (
+            {clients.map((client) => (
               <Client key={client.socketId} username={client.username} />
             ))}
           </div>

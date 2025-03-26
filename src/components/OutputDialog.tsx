@@ -41,9 +41,7 @@ const OutputDialog: React.FC<OutputDialogProps> = ({
         <DialogHeader>
           <DialogTitle className="flex justify-between items-center">
             <span>Execution Results</span>
-            <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => onOpenChange(false)}>
-              <X className="h-4 w-4" />
-            </Button>
+            {/* Removed the close button here to avoid duplication */}
           </DialogTitle>
           <DialogDescription>
             {outputDetails?.status && (

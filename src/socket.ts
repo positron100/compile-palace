@@ -1,6 +1,5 @@
 
 import { io, Socket } from 'socket.io-client';
-import { DefaultEventsMap } from 'socket.io/dist/typed-events';
 
 // For production, use a deployed backend URL
 // For development, use local server or mock
@@ -64,7 +63,7 @@ export const initSocket = async (): Promise<Socket> => {
 };
 
 // Mock socket implementation for development when server is not available
-function mockSocket(): Socket<DefaultEventsMap, DefaultEventsMap> {
+function mockSocket(): Socket {
   // Create a minimal mock implementation
   const mockSocket = {
     connected: true,
@@ -84,7 +83,7 @@ function mockSocket(): Socket<DefaultEventsMap, DefaultEventsMap> {
     disconnect: () => {
       console.log('Mock socket disconnected');
     }
-  } as Socket<DefaultEventsMap, DefaultEventsMap>;
+  } as Socket;
   
   mockSocketBehavior(mockSocket);
   return mockSocket;
