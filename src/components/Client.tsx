@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 
@@ -24,21 +23,37 @@ const Client: React.FC<ClientProps> = ({ username }) => {
     return colors[hash % colors.length];
   };
 
-  // Get initials from username (first letter)
+  // Get initials from username (first letter or first two letters)
   const getInitials = (name: string) => {
-    return name.charAt(0).toUpperCase();
+    if (!name) return '?';
+    
+    // If username contains spaces, use first letter of each word
+    if (name.includes(' ')) {
+      return name
+        .split(' ')
+        .map(part => part.charAt(0).toUpperCase())
+        .join('')
+        .slice(0, 2);
+    }
+    
+    // Otherwise return first 1-2 characters
+    return name.length > 1 
+      ? name.substring(0, 2).toUpperCase() 
+      : name.charAt(0).toUpperCase();
   };
 
-  const avatarColor = getColorFromUsername(username);
+  const avatarColor = getColorFromUsername(username || 'User');
 
   return (
     <div className="flex flex-col items-center gap-1 my-1">
       <Avatar className="h-10 w-10 border-2 border-white shadow-sm">
-        <AvatarFallback className={`${avatarColor} text-white`}>
+        <AvatarFallback className={`${avatarColor} text-white text-sm font-semibold`}>
           {getInitials(username)}
         </AvatarFallback>
       </Avatar>
-      <span className="text-xs text-purple-700 font-medium truncate max-w-[60px]">{username}</span>
+      <span className="text-xs text-purple-700 font-medium truncate max-w-[60px]">
+        {username || 'User'}
+      </span>
     </div>
   );
 };

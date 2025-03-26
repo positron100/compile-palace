@@ -1,3 +1,4 @@
+
 import { io, Socket } from 'socket.io-client';
 
 // Extended socket interface to include our custom _callbacks property
@@ -10,10 +11,33 @@ interface ExtendedSocket extends Socket {
 const SERVER_URL = import.meta.env.VITE_SERVER_URL || 'http://localhost:5000';
 
 let socket: Socket | null = null;
+let socketInitPromise: Promise<Socket> | null = null;
+let useMockSocket = false;
 
 export const initSocket = async (): Promise<Socket> => {
-  if (!socket) {
+  // If we already have an initialization promise in progress, return it
+  if (socketInitPromise) {
+    return socketInitPromise;
+  }
+  
+  // If we already have a socket and it's connected, return it
+  if (socket && socket.connected) {
+    return socket;
+  }
+  
+  // Create a new promise for socket initialization
+  socketInitPromise = new Promise<Socket>(async (resolve, reject) => {
     try {
+      // If previous attempt failed and we're in dev, use mock right away
+      if (useMockSocket && import.meta.env.DEV) {
+        console.log('Using mock socket implementation');
+        socket = mockSocket();
+        resolve(socket);
+        return;
+      }
+      
+      // Try to connect to a real socket server
+      console.log(`Attempting to connect to socket server at ${SERVER_URL}`);
       socket = io(SERVER_URL, {
         transports: ['websocket'],
         reconnection: true,
@@ -22,52 +46,62 @@ export const initSocket = async (): Promise<Socket> => {
         timeout: 10000,
       });
       
-      // If in dev with no server, use mock socket behavior
-      if (import.meta.env.DEV && !import.meta.env.VITE_SERVER_URL) {
-        mockSocketBehavior(socket);
-      }
-      
-      await new Promise<void>((resolve, reject) => {
+      // Set up connection/error handlers
+      const connectionPromise = new Promise<void>((resolveConn, rejectConn) => {
+        // Handle successful connection
         socket?.on('connect', () => {
-          console.log('Socket connected');
-          resolve();
+          console.log('Socket connected successfully');
+          useMockSocket = false;
+          resolveConn();
         });
         
+        // Handle connection error
         socket?.on('connect_error', (err) => {
           console.error('Socket connection error:', err);
           // Only reject if we haven't already connected
           if (socket?.connected !== true) {
-            reject(err);
+            rejectConn(err);
           }
         });
         
         // Set a timeout for the connection
         const timeout = setTimeout(() => {
           if (socket?.connected !== true) {
-            reject(new Error('Socket connection timeout'));
+            rejectConn(new Error('Socket connection timeout'));
           }
         }, 5000);
         
         // Clear the timeout if we connect successfully
         socket?.on('connect', () => clearTimeout(timeout));
       });
+      
+      // Wait for connection to be established
+      await connectionPromise;
+      resolve(socket);
+      
     } catch (err) {
-      console.error('Socket initialization error:', err);
+      console.error('Socket initialization error, falling back to mock:', err);
       
       // If we're in development, fallback to mock socket
       if (import.meta.env.DEV) {
+        useMockSocket = true;
         socket = mockSocket();
+        resolve(socket);
       } else {
-        throw err;
+        reject(err);
       }
+    } finally {
+      // Reset the promise once we're done
+      socketInitPromise = null;
     }
-  }
+  });
   
-  return socket;
+  return socketInitPromise;
 };
 
 // Mock socket implementation for development when server is not available
 function mockSocket(): Socket {
+  console.log('Creating mock socket');
   // Create a minimal mock implementation with our custom _callbacks property
   const mockSocket: ExtendedSocket = {
     connected: true,
@@ -88,13 +122,21 @@ function mockSocket(): Socket {
       // For JOIN events, immediately trigger the JOINED response
       if (event === 'join' && args[0]?.roomId && args[0]?.username) {
         setTimeout(() => {
-          mockSocketBehavior(mockSocket);
           if (mockSocket._callbacks && mockSocket._callbacks['joined']) {
             mockSocket._callbacks['joined']({
-              clients: mockClients,
+              clients: getMockClients(args[0].username),
               username: args[0].username,
               socketId: mockSocket.id
             });
+          }
+        }, 100);
+      }
+      
+      // For CODE_CHANGE events, echo back to all clients
+      if (event === 'code-change' && args[0]?.code !== undefined) {
+        setTimeout(() => {
+          if (mockSocket._callbacks && mockSocket._callbacks['code-change']) {
+            mockSocket._callbacks['code-change']({ code: args[0].code });
           }
         }, 100);
       }
@@ -135,16 +177,27 @@ function mockSocket(): Socket {
     _callbacks: {}
   } as any as Socket; // Type assertion here is needed because our mock doesn't implement all Socket methods
   
+  // Initialize mock behavior
   mockSocketBehavior(mockSocket);
   return mockSocket;
 }
 
-// Mock clients for development
-const mockClients = [
-  { socketId: 'mock-1', username: 'User1' },
-  { socketId: 'mock-2', username: 'User2' },
-  { socketId: 'mock-3', username: 'User3' }
-];
+// Function to get mock clients, always including the current user
+function getMockClients(currentUsername: string): {socketId: string, username: string}[] {
+  // Start with default mock clients
+  const baseClients = [
+    { socketId: 'mock-1', username: 'User1' },
+    { socketId: 'mock-2', username: 'User2' },
+    { socketId: 'mock-3', username: 'User3' }
+  ];
+  
+  // Create a new client for the current user if not already in the list
+  if (!baseClients.some(client => client.username === currentUsername)) {
+    return [...baseClients, { socketId: `mock-${Math.random().toString(36).substring(2, 9)}`, username: currentUsername }];
+  }
+  
+  return baseClients;
+}
 
 // Add mock behavior to simulate a real socket
 function mockSocketBehavior(socket: Socket): void {
@@ -158,6 +211,8 @@ function mockSocketBehavior(socket: Socket): void {
     LEAVE: 'leave',
   };
   
+  console.log('Setting up mock socket behavior');
+  
   // Initialize _callbacks object if it doesn't exist
   extendedSocket._callbacks = extendedSocket._callbacks || {};
   
@@ -170,36 +225,12 @@ function mockSocketBehavior(socket: Socket): void {
     return originalOn.call(this, event, callback);
   };
   
-  // Simulate JOIN response
-  socket.on(ACTIONS.JOIN, ({ roomId, username }: { roomId: string, username: string }) => {
-    console.log(`Mock user ${username} joined room ${roomId}`);
-    
-    // Add the new user to mock clients if not already there
-    if (!mockClients.some(client => client.socketId === socket.id)) {
-      const newClient = { socketId: socket.id, username };
-      mockClients.push(newClient);
+  // Simulate SYNC_CODE event
+  socket.on(ACTIONS.SYNC_CODE, ({ code, socketId }: { code: string, socketId: string }) => {
+    console.log(`Mock socket syncing code for ${socketId}`);
+    // If another socket needs to receive the code
+    if (extendedSocket._callbacks && extendedSocket._callbacks[ACTIONS.CODE_CHANGE]) {
+      extendedSocket._callbacks[ACTIONS.CODE_CHANGE]({ code });
     }
-    
-    // Simulate server response
-    setTimeout(() => {
-      if (extendedSocket._callbacks && extendedSocket._callbacks[ACTIONS.JOINED]) {
-        extendedSocket._callbacks[ACTIONS.JOINED]({
-          clients: mockClients,
-          username,
-          socketId: socket.id
-        });
-      }
-    }, 500);
-  });
-  
-  // Simulate code sync
-  socket.on(ACTIONS.CODE_CHANGE, ({ code }: { code: string }) => {
-    console.log('Mock code change received:', code);
-    // Echo back to all clients
-    setTimeout(() => {
-      if (extendedSocket._callbacks && extendedSocket._callbacks[ACTIONS.CODE_CHANGE]) {
-        extendedSocket._callbacks[ACTIONS.CODE_CHANGE]({ code });
-      }
-    }, 100);
   });
 }

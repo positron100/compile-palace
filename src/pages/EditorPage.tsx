@@ -1,5 +1,5 @@
 
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState, useCallback } from "react";
 import Client from "../components/Client";
 import Editor from "../components/Editor";
 import OutputDialog from "../components/OutputDialog";
@@ -13,7 +13,7 @@ import {
 import ACTIONS from "../Actions";
 import { toast } from "sonner";
 import { submitCode, languageOptions } from "../services/compileService";
-import { Play, Copy, LogOut, ChevronDown } from "lucide-react";
+import { Play, Copy, LogOut, ChevronDown, WifiOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -40,6 +40,11 @@ function EditorPage() {
   const [isCompiling, setIsCompiling] = useState(false);
   const [showOutput, setShowOutput] = useState(false);
   const [initialized, setInitialized] = useState(false);
+  const [socketConnected, setSocketConnected] = useState(false);
+  const [socketError, setSocketError] = useState(false);
+  
+  // Connection status message for debugging
+  const [connectionStatus, setConnectionStatus] = useState("Connecting...");
   
   // Function to handle compile button click
   const handleCompile = async () => {
@@ -63,68 +68,68 @@ function EditorPage() {
     }
   };
 
-  useEffect(() => {
-    const init = async () => {
-      try {
-        socketRef.current = await initSocket();
-        
-        // handling socket connection errors
-        socketRef.current.on("connect_error", (err) => handleErrors(err));
-        socketRef.current.on("connect_failed", (err) => handleErrors(err));
-
-        function handleErrors(e) {
-          console.log("socket error", e);
-          toast.error("Socket connection failed");
-          // We won't navigate away immediately to prevent loops
+  // Initialize socket connection and set up event listeners
+  const initSocketConnection = useCallback(async () => {
+    try {
+      setConnectionStatus("Connecting to server...");
+      socketRef.current = await initSocket();
+      setSocketConnected(true);
+      setSocketError(false);
+      setConnectionStatus("Connected to server");
+      
+      // Handle socket errors
+      socketRef.current.on("connect_error", (err) => {
+        console.error("Socket connection error in EditorPage:", err);
+        setSocketError(true);
+        setConnectionStatus("Connection failed, using mock mode");
+        toast.error("Socket connection failed, using local mode");
+      });
+      
+      // Join room
+      socketRef.current.emit(ACTIONS.JOIN, {
+        roomId,
+        username: location.state?.username || "Anonymous",
+      });
+      
+      // Listen for joined event
+      socketRef.current.on(ACTIONS.JOINED, ({ clients, username, socketId }) => {
+        console.log("JOINED event received", { clients, username, socketId });
+        // Only show notification for others joining
+        if (username !== location.state?.username) {
+          toast.success(`${username} joined the room`);
         }
-
-        // emiting an event which now have to be listened onto server
-        socketRef.current.emit(ACTIONS.JOIN, {
-          roomId,
-          username: location.state?.username || "Anonymous",
-        });
-
-        // listening for joined event
-        socketRef.current.on(
-          ACTIONS.JOINED,
-          ({ clients, username, socketId }) => {
-            // do not display the message to the joined user
-            if (username !== location.state?.username) {
-              toast.success(`${username} joined the room`);
-              console.log(`${username} joined `);
-            }
-            console.log("Setting clients:", clients); // Debug log
-            setClients(clients);
-            console.log("Updated clients:", clients); // Add this to debug clients
-
-            // sync code as soon as client joins
-            socketRef.current.emit(ACTIONS.SYNC_CODE, {
-              code: codeRef.current,
-              // sync the code with client who just joined
-              socketId,
-            });
-          }
-        );
-
-        // listening for disconnected
-        socketRef.current.on(ACTIONS.DISCONNECTED, ({ socketId, username }) => {
-          toast.success(`${username} left the room.`);
-          // removing the user which disconnected (from the client array)
-          setClients((prev) => {
-            return prev.filter((client) => client.socketId !== socketId);
-          });
-        });
         
-        setInitialized(true);
-      } catch (err) {
-        console.error("Socket initialization error:", err);
-        toast.error("Failed to connect to server. Please try again.");
-      }
-    };
+        // Update client list with the clients we received from server
+        if (Array.isArray(clients)) {
+          console.log("Setting clients:", clients);
+          setClients(clients);
+        } else {
+          console.error("Clients is not an array:", clients);
+        }
+      });
+      
+      // Listen for disconnect event
+      socketRef.current.on(ACTIONS.DISCONNECTED, ({ socketId, username }) => {
+        toast.success(`${username} left the room.`);
+        setClients((prev) => {
+          return prev.filter((client) => client.socketId !== socketId);
+        });
+      });
+      
+      setInitialized(true);
+    } catch (error) {
+      console.error("Socket initialization failed:", error);
+      setSocketError(true);
+      setConnectionStatus("Connection failed, using mock mode");
+      toast.error("Failed to connect to server, using local mode");
+      setInitialized(true); // Still mark as initialized so UI renders
+    }
+  }, [location.state?.username, roomId]);
+
+  useEffect(() => {
+    initSocketConnection();
     
-    init();
-    
-    // cleaning function: function returned from useEffect
+    // Cleanup function
     return () => {
       if (socketRef.current) {
         socketRef.current.off(ACTIONS.JOINED);
@@ -132,9 +137,9 @@ function EditorPage() {
         socketRef.current.disconnect();
       }
     };
-  }, [location.state?.username, roomId]);
+  }, [initSocketConnection]);
   
-  // if username is not found and we've tried to initialize, redirect back to home page
+  // If username is not found and we've tried to initialize, redirect back to home page
   if (!location.state?.username && initialized) {
     return <Navigate to="/" />;
   }
@@ -153,11 +158,6 @@ function EditorPage() {
     reactNavigator("/");
   }
 
-  // Generate a random animation delay for each square
-  const generateRandomDelay = () => {
-    return `${Math.random() * 10}s`;
-  };
-
   return (
     <div className="min-h-screen bg-white text-gray-800 flex">
       {/* Sidebar */}
@@ -165,19 +165,36 @@ function EditorPage() {
         <div className="mb-6">
           <h2 className="text-2xl font-bold text-purple-800 mb-1">Code Palace</h2>
           <p className="text-sm text-purple-500">Real-time code collaboration</p>
+          
+          {/* Connection status indicator */}
+          <div className={`flex items-center gap-1 mt-2 text-xs ${socketError ? 'text-red-500' : 'text-green-600'}`}>
+            {socketError ? (
+              <>
+                <WifiOff size={14} />
+                <span>Using local mode</span>
+              </>
+            ) : (
+              <>
+                <div className={`w-2 h-2 rounded-full ${socketConnected ? 'bg-green-500' : 'bg-amber-500'}`}></div>
+                <span>{connectionStatus}</span>
+              </>
+            )}
+          </div>
         </div>
         
         <div className="mb-8">
           <h3 className="font-semibold text-gray-700 mb-3">Connected Users</h3>
-          <div className="flex flex-wrap gap-3">
-            {clients.length > 0 ? (
-              clients.map((client) => (
+          {clients.length > 0 ? (
+            <div className="flex flex-wrap gap-3">
+              {clients.map((client) => (
                 <Client key={client.socketId} username={client.username} />
-              ))
-            ) : (
-              <span className="text-sm text-purple-400">No users connected yet...</span>
-            )}
-          </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-sm text-purple-400 italic">
+              {initialized ? "No users connected yet..." : "Connecting..."}
+            </div>
+          )}
         </div>
         
         <div className="mt-auto space-y-3">
