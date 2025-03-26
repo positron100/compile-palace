@@ -2,10 +2,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import Client from "../components/Client";
 import Editor from "../components/Editor";
-import InputSection from "../components/InputSection";
-import OutputSection from "../components/OutputSection";
-import LanguageSelector from "../components/LanguageSelector";
-import CompileButton from "../components/CompileButton";
+import OutputDialog from "../components/OutputDialog";
 import { initSocket } from "../socket";
 import {
   Navigate,
@@ -16,12 +13,15 @@ import {
 import ACTIONS from "../Actions";
 import { toast } from "sonner";
 import { submitCode, languageOptions } from "../services/compileService";
-
-// Custom properties for TypeScript
-interface CustomCSSProperties extends React.CSSProperties {
-  "--i"?: string | number;
-  "--j"?: string | number;
-}
+import { Play, Copy, LogOut, ChevronDown } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 function EditorPage() {
   // socket initialization
@@ -38,6 +38,7 @@ function EditorPage() {
   const [stdin, setStdin] = useState("");
   const [outputDetails, setOutputDetails] = useState(null);
   const [isCompiling, setIsCompiling] = useState(false);
+  const [showOutput, setShowOutput] = useState(false);
   const [initialized, setInitialized] = useState(false);
   
   // Function to handle compile button click
@@ -52,6 +53,7 @@ function EditorPage() {
         stdin
       );
       setOutputDetails(result);
+      setShowOutput(true);
       toast.success("Code executed successfully!");
     } catch (error) {
       console.error("Compilation error:", error);
@@ -150,50 +152,77 @@ function EditorPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-900 text-white flex">
+    <div className="min-h-screen bg-white text-gray-800 flex">
       {/* Sidebar */}
-      <div className="w-60 bg-gray-800 p-4 flex flex-col border-r border-gray-700">
-        <div className="mb-6 bg-gray-700 p-3 rounded-lg text-center">
-          <h2 className="text-xl font-bold">Compile Palace</h2>
+      <div className="w-64 bg-gradient-to-b from-white to-purple-50 p-6 flex flex-col border-r border-purple-100 shadow-sm">
+        <div className="mb-6">
+          <h2 className="text-2xl font-bold text-purple-800 mb-1">Code Palace</h2>
+          <p className="text-sm text-purple-500">Real-time code collaboration</p>
         </div>
         
-        <div className="mb-6">
-          <h3 className="font-semibold text-lg mb-2">Connected Users</h3>
-          <div className="flex flex-wrap gap-2">
+        <div className="mb-8">
+          <h3 className="font-semibold text-gray-700 mb-3">Connected Users</h3>
+          <div className="flex flex-wrap gap-3">
             {clients.map((client: any) => (
               <Client key={client.socketId} username={client.username} />
             ))}
           </div>
         </div>
         
-        <div className="mb-6">
-          <h3 className="font-semibold text-lg mb-2">Compiler</h3>
-          <div className="space-y-3">
-            <LanguageSelector language={language} setLanguage={setLanguage} />
-            <CompileButton onClick={handleCompile} isCompiling={isCompiling} />
-          </div>
-        </div>
-        
         <div className="mt-auto space-y-3">
-          <button 
-            className="w-full bg-blue-600 hover:bg-blue-700 py-2 px-4 rounded transition-colors"
+          <Button 
+            variant="outline"
+            className="w-full bg-white border-purple-200 text-purple-700 hover:bg-purple-50 hover:text-purple-800 flex items-center gap-2 transition-all"
             onClick={copyRoomId}
           >
+            <Copy size={16} />
             Copy Room ID
-          </button>
-          <button 
-            className="w-full bg-red-600 hover:bg-red-700 py-2 px-4 rounded transition-colors"
+          </Button>
+          <Button 
+            variant="outline"
+            className="w-full bg-white border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700 flex items-center gap-2 transition-all"
             onClick={leaveRoom}
           >
+            <LogOut size={16} />
             Leave Room
-          </button>
+          </Button>
         </div>
       </div>
 
       {/* Main content */}
-      <div className="flex-1 flex flex-col h-screen">
-        <div className="flex-1 overflow-hidden">
-          {/* Editor component */}
+      <div className="flex-1 flex flex-col h-screen overflow-hidden">
+        {/* Language selector */}
+        <div className="p-4 border-b border-purple-100 bg-gradient-to-r from-purple-50 to-white flex justify-between items-center">
+          <Select
+            value={language.id.toString()}
+            onValueChange={(value) => {
+              const selectedLang = languageOptions.find(
+                (lang) => lang.id === parseInt(value)
+              );
+              if (selectedLang) {
+                setLanguage(selectedLang);
+              }
+            }}
+          >
+            <SelectTrigger className="w-60 bg-white border-purple-200 focus:ring-purple-400">
+              <SelectValue placeholder="Select language" />
+            </SelectTrigger>
+            <SelectContent className="bg-white border-purple-100">
+              {languageOptions.map((lang) => (
+                <SelectItem key={lang.id} value={lang.id.toString()}>
+                  {lang.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          
+          <div className="text-sm text-purple-600 font-medium">
+            Room: <span className="text-purple-800">{roomId}</span>
+          </div>
+        </div>
+        
+        {/* Editor with run button */}
+        <div className="flex-1 relative overflow-hidden">
           <Editor
             socketRef={socketRef}
             roomId={roomId || ""}
@@ -202,12 +231,27 @@ function EditorPage() {
               codeRef.current = code;
             }}
           />
-        </div>
-        <div className="h-2/5 flex border-t border-gray-700">
-          <InputSection stdin={stdin} setStdin={setStdin} />
-          <OutputSection outputDetails={outputDetails} />
+          
+          <Button
+            onClick={handleCompile}
+            disabled={isCompiling}
+            className="absolute bottom-6 right-6 bg-purple-600 hover:bg-purple-700 text-white w-12 h-12 rounded-lg shadow-lg flex items-center justify-center transition-transform hover:scale-105"
+          >
+            {isCompiling ? (
+              <div className="animate-spin h-5 w-5 border-2 border-white border-t-transparent rounded-full"/>
+            ) : (
+              <Play size={20} />
+            )}
+          </Button>
         </div>
       </div>
+      
+      {/* Output Dialog */}
+      <OutputDialog 
+        open={showOutput} 
+        onOpenChange={setShowOutput} 
+        outputDetails={outputDetails} 
+      />
     </div>
   );
 }
