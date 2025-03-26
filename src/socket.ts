@@ -90,7 +90,7 @@ function mockSocket(): Socket {
 }
 
 // Add mock behavior to simulate a real socket
-function mockSocketBehavior(socket: any) {
+function mockSocketBehavior(socket: any): void {
   const ACTIONS = {
     JOIN: 'join',
     JOINED: 'joined',

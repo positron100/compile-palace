@@ -31,7 +31,7 @@ function EditorPage() {
   const location = useLocation();
   const { roomId } = useParams();
   const reactNavigator = useNavigate();
-  const [clients, setClient] = useState([]);
+  const [clients, setClients] = useState([]);
   
   // States for compiler
   const [language, setLanguage] = useState(languageOptions[0]);
@@ -93,7 +93,7 @@ function EditorPage() {
               toast.success(`${username} joined the room`);
               console.log(`${username} joined `);
             }
-            setClient(clients);
+            setClients(clients);
 
             // sync code as soon as client joins
             socketRef.current.emit(ACTIONS.SYNC_CODE, {
@@ -108,7 +108,7 @@ function EditorPage() {
         socketRef.current.on(ACTIONS.DISCONNECTED, ({ socketId, username }) => {
           toast.success(`${username} left the room.`);
           // removing the user which disconnected (from the client array)
-          setClient((prev) => {
+          setClients((prev) => {
             return prev.filter((client) => client.socketId !== socketId);
           });
         });
@@ -150,6 +150,11 @@ function EditorPage() {
   async function leaveRoom() {
     reactNavigator("/");
   }
+
+  // Generate a random animation delay for each square
+  const generateRandomDelay = () => {
+    return `${Math.random() * 10}s`;
+  };
 
   return (
     <div className="min-h-screen bg-white text-gray-800 flex">
@@ -243,6 +248,28 @@ function EditorPage() {
               <Play size={20} />
             )}
           </Button>
+        </div>
+
+        {/* Animated squares section for the bottom area */}
+        <div className="h-32 relative overflow-hidden bg-gradient-to-b from-purple-50 to-white">
+          {/* Animated squares - similar to login page */}
+          <ul className="absolute inset-0">
+            {Array.from({ length: 10 }).map((_, idx) => (
+              <li
+                key={idx}
+                style={{
+                  position: 'absolute',
+                  width: `${Math.random() * 40 + 20}px`,
+                  height: `${Math.random() * 40 + 20}px`,
+                  left: `${Math.random() * 100}%`,
+                  top: `${Math.random() * 100}%`,
+                  animationDelay: generateRandomDelay(),
+                  opacity: Math.random() * 0.3 + 0.1,
+                }}
+                className="bg-purple-400 rounded-lg animate-float"
+              />
+            ))}
+          </ul>
         </div>
       </div>
       

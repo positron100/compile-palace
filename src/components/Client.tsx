@@ -1,5 +1,6 @@
 
 import React from 'react';
+import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 
 interface ClientProps {
   username: string;
@@ -31,11 +32,13 @@ const Client: React.FC<ClientProps> = ({ username }) => {
   const avatarColor = getColorFromUsername(username);
 
   return (
-    <div className="flex flex-col items-center">
-      <div className={`${avatarColor} w-10 h-10 rounded-full flex items-center justify-center text-white font-bold`}>
-        {getInitials(username)}
-      </div>
-      <span className="text-sm mt-1 truncate max-w-[60px]">{username}</span>
+    <div className="flex flex-col items-center gap-1 my-1">
+      <Avatar className="h-10 w-10">
+        <AvatarFallback className={`${avatarColor} text-white`}>
+          {getInitials(username)}
+        </AvatarFallback>
+      </Avatar>
+      <span className="text-xs text-purple-700 font-medium truncate max-w-[60px]">{username}</span>
     </div>
   );
 };

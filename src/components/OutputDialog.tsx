@@ -8,7 +8,6 @@ import {
   DialogHeader,
   DialogTitle,
   DialogDescription,
-  DialogClose,
 } from './ui/dialog';
 
 interface OutputStatus {
@@ -42,11 +41,9 @@ const OutputDialog: React.FC<OutputDialogProps> = ({
         <DialogHeader>
           <DialogTitle className="flex justify-between items-center">
             <span>Execution Results</span>
-            <DialogClose asChild>
-              <Button variant="ghost" size="icon" className="h-6 w-6">
-                <X className="h-4 w-4" />
-              </Button>
-            </DialogClose>
+            <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => onOpenChange(false)}>
+              <X className="h-4 w-4" />
+            </Button>
           </DialogTitle>
           <DialogDescription>
             {outputDetails?.status && (

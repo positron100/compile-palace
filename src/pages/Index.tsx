@@ -13,12 +13,13 @@ const Index = () => {
     e.preventDefault();
     const id = uuidv4();
     setRoomId(id);
-    toast.success("New Room Created");
+    // Set toast duration to 3 seconds (3000ms)
+    toast.success("New Room Created", { duration: 3000 });
   };
 
   const joinRoom = () => {
     if (!roomId || !username) {
-      toast.error("Room ID and username required");
+      toast.error("Room ID and username required", { duration: 3000 });
       return;
     }
     navigate(`/editor/${roomId}`, {
