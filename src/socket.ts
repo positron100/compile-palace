@@ -1,9 +1,7 @@
-
 import { io, Socket } from 'socket.io-client';
-import { DefaultEventsMap } from 'socket.io-client/build/typed-events';
 
 // Extended socket interface to include our custom _callbacks property
-interface ExtendedSocket extends Socket<DefaultEventsMap, DefaultEventsMap> {
+interface ExtendedSocket extends Socket {
   _callbacks?: Record<string, Function>;
 }
 
