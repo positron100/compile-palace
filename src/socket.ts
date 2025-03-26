@@ -107,7 +107,7 @@ function mockSocketBehavior(socket: any) {
   ];
   
   // Simulate JOIN response
-  socket.on(ACTIONS.JOIN, ({ roomId, username }) => {
+  socket.on(ACTIONS.JOIN, ({ roomId, username }: { roomId: string, username: string }) => {
     console.log(`Mock user ${username} joined room ${roomId}`);
     
     // Add the new user to mock clients
@@ -115,7 +115,8 @@ function mockSocketBehavior(socket: any) {
     
     // Simulate server response
     setTimeout(() => {
-      socket.on(ACTIONS.JOINED, {
+      // Fix: Changed from socket.on to socket.emit to properly emit the event
+      socket.emit(ACTIONS.JOINED, {
         clients: [...mockClients, newClient],
         username,
         socketId: socket.id
@@ -124,11 +125,12 @@ function mockSocketBehavior(socket: any) {
   });
   
   // Simulate code sync
-  socket.on(ACTIONS.CODE_CHANGE, ({ code }) => {
+  socket.on(ACTIONS.CODE_CHANGE, ({ code }: { code: string }) => {
     console.log('Mock code change received:', code);
     // Echo back to all clients
     setTimeout(() => {
-      socket.on(ACTIONS.CODE_CHANGE, { code });
+      // Fix: Changed from socket.on to socket.emit to properly emit the event
+      socket.emit(ACTIONS.CODE_CHANGE, { code });
     }, 100);
   });
 }
