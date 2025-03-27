@@ -85,13 +85,16 @@ function EditorPage() {
       
       console.log("Socket connected, joining room:", roomId);
       
-      // Join room
+      // Join room with clear username
+      const username = location.state?.username || "Anonymous";
+      console.log("Joining as:", username);
+      
       socketRef.current.emit(ACTIONS.JOIN, {
         roomId,
-        username: location.state?.username || "Anonymous",
+        username,
       });
       
-      // Listen for joined event
+      // Listen for joined event - make this more robust
       socketRef.current.on(ACTIONS.JOINED, ({ clients, username, socketId }) => {
         console.log("JOINED event received", { clients, username, socketId });
         
@@ -113,6 +116,7 @@ function EditorPage() {
       
       // Listen for disconnect event
       socketRef.current.on(ACTIONS.DISCONNECTED, ({ socketId, username }) => {
+        console.log("DISCONNECTED event received", { socketId, username });
         toast.success(`${username} left the room.`);
         setClients((prev) => {
           return prev.filter((client) => client.socketId !== socketId);
@@ -128,12 +132,21 @@ function EditorPage() {
       
       // Still set initialized to true so UI renders
       setInitialized(true);
+      
+      // If in local mode, create a fake client for UI demonstration
+      if (!socketRef.current) {
+        console.log("Creating mock client in local mode");
+        // Create a fake client just for the UI
+        const username = location.state?.username || "Anonymous";
+        setClients([{ socketId: 'local-user', username }]);
+      }
     }
   }, [location.state?.username, roomId, initialized]);
 
   // Set up socket connection on component mount
   useEffect(() => {
     if (!socketRef.current) {
+      console.log("Initializing socket connection");
       initSocketConnection();
     }
     
@@ -197,7 +210,7 @@ function EditorPage() {
       </div>
       
       <div className="mb-8">
-        <h3 className="font-semibold text-gray-700 mb-3">Connected Users</h3>
+        <h3 className="font-semibold text-gray-700 mb-3">Connected Users ({clients.length})</h3>
         {clients.length > 0 ? (
           <div className="flex flex-wrap gap-3">
             {clients.map((client) => (

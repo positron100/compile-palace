@@ -50,7 +50,7 @@ const Client: React.FC<ClientProps> = ({ username }) => {
   // Use tooltip for longer usernames to show the full name on hover
   return (
     <TooltipProvider>
-      <div className="flex flex-col items-center gap-1 my-1">
+      <div className="flex flex-col items-center gap-1 my-1 px-1">
         <Tooltip>
           <TooltipTrigger asChild>
             <Avatar className="h-10 w-10 border-2 border-white shadow-sm hover:scale-110 transition-transform">

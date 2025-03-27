@@ -37,7 +37,7 @@ const OutputDialog: React.FC<OutputDialogProps> = ({
 }) => {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[600px] max-h-[80vh] overflow-auto">
+      <DialogContent className="sm:max-w-[600px] max-h-[80vh] overflow-auto px-4 sm:px-6">
         <DialogHeader>
           <DialogTitle className="flex justify-between items-center">
             <span>Execution Results</span>
