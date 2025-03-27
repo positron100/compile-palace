@@ -26,8 +26,8 @@ interface EditorProps {
 
 const Editor: React.FC<EditorProps> = ({ socketRef, roomId, onCodeChange, language }) => {
   const editorRef = useRef<Codemirror.Editor | null>(null);
-  const codeChangeRef = useRef<boolean>(false);
-  const localChangeRef = useRef<boolean>(false);
+  const ignoreChangeRef = useRef<boolean>(false);
+  const previousCodeRef = useRef<string>("");
   
   // Set the appropriate mode based on the selected language
   const getModeForLanguage = (langId: number) => {
@@ -63,54 +63,51 @@ const Editor: React.FC<EditorProps> = ({ socketRef, roomId, onCodeChange, langua
         }
       );
 
-      // Handling code changes carefully to prevent cursor jumps
+      // Handle initial editor content
+      if (editorRef.current) {
+        const initialCode = editorRef.current.getValue();
+        previousCodeRef.current = initialCode;
+        onCodeChange(initialCode);
+      }
+
+      // Handling code changes with specific approach to prevent cursor jumping
       editorRef.current.on("change", (instance, changes) => {
+        // Exit early if we should ignore this change (from remote update)
+        if (ignoreChangeRef.current) {
+          return;
+        }
+
         const { origin } = changes;
         const code = instance.getValue();
         
-        // If change is from setValue (remote) or we're in the middle of processing a local change, don't re-emit
-        if (origin === "setValue" || codeChangeRef.current) {
-          return;
-        }
-        
-        // Handle local user changes (typing)
-        if (origin === "input" || origin === "+input") {
-          // Mark that we're processing a local change
-          localChangeRef.current = true;
-          
-          // Update parent component without re-render
+        // Only handle local user input
+        if (origin === "input" || origin === "+input" || origin === "+delete") {
+          // Update parent component
           onCodeChange(code);
+          previousCodeRef.current = code;
           
-          // Only emit if not processing another change and socket exists
-          if (!codeChangeRef.current && socketRef.current) {
-            // Set flag to prevent re-entry
-            codeChangeRef.current = true;
-            
-            // Emit change to other users
+          // Emit to other users if connected
+          if (socketRef.current) {
+            console.log("Emitting local code change");
             socketRef.current.emit(ACTIONS.CODE_CHANGE, {
               roomId,
               code,
             });
-            
-            // Reset flag after emission
-            codeChangeRef.current = false;
           }
-          
-          // Reset local change flag
-          localChangeRef.current = false;
         }
       });
     }
-    init(); 
+    
+    init();
     
     return () => {
       // Cleanup CodeMirror instance
       if (editorRef.current) {
         editorRef.current.toTextArea();
+        editorRef.current = null;
       }
     };
-    // eslint-disable-next-line
-  }, []);
+  }, []); // Empty dependency array to run once
 
   // Update editor mode when language changes
   useEffect(() => {
@@ -119,38 +116,50 @@ const Editor: React.FC<EditorProps> = ({ socketRef, roomId, onCodeChange, langua
     }
   }, [language]);
 
+  // Socket event listener for remote code changes
   useEffect(() => {
-    // listening for CODE_CHANGE event from socket
-    if (socketRef.current) {
-      socketRef.current.on(ACTIONS.CODE_CHANGE, ({ code }: { code: string }) => {
-        if (code !== null && editorRef.current && !localChangeRef.current) {
-          // Get current cursor position before update
-          const cursor = editorRef.current.getCursor();
-          
-          // Set flag to prevent triggering local change event
-          codeChangeRef.current = true;
-          
-          // Update editor content
-          editorRef.current.setValue(code);
-          
-          // Restore cursor position
-          editorRef.current.setCursor(cursor);
-          
-          // Reset flag after update complete
-          setTimeout(() => {
-            codeChangeRef.current = false;
-          }, 0);
-        }
-      });
-    }
-
+    if (!socketRef.current) return;
+    
+    const handleRemoteChange = ({ code }: { code: string }) => {
+      if (!editorRef.current || !code || code === previousCodeRef.current) {
+        return; // Ignore if no change or same as current code
+      }
+      
+      console.log("Received remote code change");
+      
+      // Save cursor position
+      const cursor = editorRef.current.getCursor();
+      const scrollInfo = editorRef.current.getScrollInfo();
+      
+      // Set flag to ignore the change event this will trigger
+      ignoreChangeRef.current = true;
+      
+      // Update the editor value
+      editorRef.current.setValue(code);
+      
+      // Restore cursor position and scroll
+      editorRef.current.setCursor(cursor);
+      editorRef.current.scrollTo(scrollInfo.left, scrollInfo.top);
+      
+      // Update the previous code ref
+      previousCodeRef.current = code;
+      
+      // Reset flag after a short delay
+      setTimeout(() => {
+        ignoreChangeRef.current = false;
+      }, 0);
+    };
+    
+    // Register event handler
+    socketRef.current.on(ACTIONS.CODE_CHANGE, handleRemoteChange);
+    
+    // Cleanup
     return () => {
       if (socketRef.current) {
-        socketRef.current.off(ACTIONS.CODE_CHANGE);
+        socketRef.current.off(ACTIONS.CODE_CHANGE, handleRemoteChange);
       }
-    }
-    // eslint-disable-next-line   
-  }, [socketRef.current]);
+    };
+  }, [socketRef.current]); // Only re-run if socket reference changes
 
   return <textarea id="realtimeEditor"></textarea>;
 };

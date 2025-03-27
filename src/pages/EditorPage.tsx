@@ -76,18 +76,14 @@ function EditorPage() {
   const initSocketConnection = useCallback(async () => {
     try {
       setConnectionStatus("Connecting to server...");
+      
+      // Always attempt a fresh connection
       socketRef.current = await initSocket();
       setSocketConnected(true);
       setSocketError(false);
       setConnectionStatus("Connected to server");
       
-      // Handle socket errors
-      socketRef.current.on("connect_error", (err) => {
-        console.error("Socket connection error in EditorPage:", err);
-        setSocketError(true);
-        setConnectionStatus("Connection failed, using local mode");
-        toast.error("Socket connection failed, using local mode");
-      });
+      console.log("Socket connected, joining room:", roomId);
       
       // Join room
       socketRef.current.emit(ACTIONS.JOIN, {
@@ -98,8 +94,9 @@ function EditorPage() {
       // Listen for joined event
       socketRef.current.on(ACTIONS.JOINED, ({ clients, username, socketId }) => {
         console.log("JOINED event received", { clients, username, socketId });
+        
         // Only show notification for others joining
-        if (username !== location.state?.username) {
+        if (username !== location.state?.username && initialized) {
           toast.success(`${username} joined the room`);
         }
         
@@ -109,7 +106,7 @@ function EditorPage() {
           setClients(clients);
         } else {
           console.error("Clients is not an array:", clients);
-          // Set an empty array if clients is not an array
+          // Set empty array if clients is not an array
           setClients([]);
         }
       });
@@ -128,19 +125,26 @@ function EditorPage() {
       setSocketError(true);
       setConnectionStatus("Connection failed, using local mode");
       toast.error("Failed to connect to server, using local mode");
-      setInitialized(true); // Still mark as initialized so UI renders
+      
+      // Still set initialized to true so UI renders
+      setInitialized(true);
     }
-  }, [location.state?.username, roomId]);
+  }, [location.state?.username, roomId, initialized]);
 
+  // Set up socket connection on component mount
   useEffect(() => {
-    initSocketConnection();
+    if (!socketRef.current) {
+      initSocketConnection();
+    }
     
     // Cleanup function
     return () => {
       if (socketRef.current) {
+        console.log("Cleaning up socket connection");
         socketRef.current.off(ACTIONS.JOINED);
         socketRef.current.off(ACTIONS.DISCONNECTED);
         socketRef.current.disconnect();
+        socketRef.current = null;
       }
     };
   }, [initSocketConnection]);
@@ -150,6 +154,7 @@ function EditorPage() {
     return <Navigate to="/" />;
   }
 
+  // Copy room ID to clipboard
   async function copyRoomId() {
     try {
       await navigator.clipboard.writeText(roomId || "");
@@ -160,7 +165,11 @@ function EditorPage() {
     }
   }
 
+  // Leave room and navigate to home
   async function leaveRoom() {
+    if (socketRef.current) {
+      socketRef.current.disconnect();
+    }
     reactNavigator("/");
   }
 
