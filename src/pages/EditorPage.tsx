@@ -13,7 +13,7 @@ import {
 import ACTIONS from "../Actions";
 import { toast } from "sonner";
 import { submitCode, languageOptions } from "../services/compileService";
-import { Play, Copy, LogOut, ChevronDown, WifiOff } from "lucide-react";
+import { Play, Copy, LogOut, WifiOff, Users, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -22,6 +22,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 
 function EditorPage() {
   // socket initialization
@@ -42,6 +43,9 @@ function EditorPage() {
   const [initialized, setInitialized] = useState(false);
   const [socketConnected, setSocketConnected] = useState(false);
   const [socketError, setSocketError] = useState(false);
+  
+  // Mobile UI state
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   
   // Connection status message for debugging
   const [connectionStatus, setConnectionStatus] = useState("Connecting...");
@@ -81,7 +85,7 @@ function EditorPage() {
       socketRef.current.on("connect_error", (err) => {
         console.error("Socket connection error in EditorPage:", err);
         setSocketError(true);
-        setConnectionStatus("Connection failed, using mock mode");
+        setConnectionStatus("Connection failed, using local mode");
         toast.error("Socket connection failed, using local mode");
       });
       
@@ -105,6 +109,8 @@ function EditorPage() {
           setClients(clients);
         } else {
           console.error("Clients is not an array:", clients);
+          // Set an empty array if clients is not an array
+          setClients([]);
         }
       });
       
@@ -120,7 +126,7 @@ function EditorPage() {
     } catch (error) {
       console.error("Socket initialization failed:", error);
       setSocketError(true);
-      setConnectionStatus("Connection failed, using mock mode");
+      setConnectionStatus("Connection failed, using local mode");
       toast.error("Failed to connect to server, using local mode");
       setInitialized(true); // Still mark as initialized so UI renders
     }
@@ -158,94 +164,121 @@ function EditorPage() {
     reactNavigator("/");
   }
 
-  return (
-    <div className="min-h-screen bg-white text-gray-800 flex">
-      {/* Sidebar */}
-      <div className="w-64 bg-gradient-to-b from-white to-purple-50 p-6 flex flex-col border-r border-purple-100 shadow-sm">
-        <div className="mb-6">
-          <h2 className="text-2xl font-bold text-purple-800 mb-1">Code Palace</h2>
-          <p className="text-sm text-purple-500">Real-time code collaboration</p>
-          
-          {/* Connection status indicator */}
-          <div className={`flex items-center gap-1 mt-2 text-xs ${socketError ? 'text-red-500' : 'text-green-600'}`}>
-            {socketError ? (
-              <>
-                <WifiOff size={14} />
-                <span>Using local mode</span>
-              </>
-            ) : (
-              <>
-                <div className={`w-2 h-2 rounded-full ${socketConnected ? 'bg-green-500' : 'bg-amber-500'}`}></div>
-                <span>{connectionStatus}</span>
-              </>
-            )}
-          </div>
-        </div>
+  // Create sidebar content component to reuse in both desktop and mobile views
+  const SidebarContent = () => (
+    <>
+      <div className="mb-6">
+        <h2 className="text-2xl font-bold text-purple-800 mb-1">Code Palace</h2>
+        <p className="text-sm text-purple-500">Real-time code collaboration</p>
         
-        <div className="mb-8">
-          <h3 className="font-semibold text-gray-700 mb-3">Connected Users</h3>
-          {clients.length > 0 ? (
-            <div className="flex flex-wrap gap-3">
-              {clients.map((client) => (
-                <Client key={client.socketId} username={client.username} />
-              ))}
-            </div>
+        {/* Connection status indicator */}
+        <div className={`flex items-center gap-1 mt-2 text-xs ${socketError ? 'text-red-500' : 'text-green-600'}`}>
+          {socketError ? (
+            <>
+              <WifiOff size={14} />
+              <span>Using local mode</span>
+            </>
           ) : (
-            <div className="text-sm text-purple-400 italic">
-              {initialized ? "No users connected yet..." : "Connecting..."}
-            </div>
+            <>
+              <div className={`w-2 h-2 rounded-full ${socketConnected ? 'bg-green-500' : 'bg-amber-500'}`}></div>
+              <span>{connectionStatus}</span>
+            </>
           )}
         </div>
-        
-        <div className="mt-auto space-y-3">
-          <Button 
-            variant="outline"
-            className="w-full bg-white border-purple-200 text-purple-700 hover:bg-purple-50 hover:text-purple-800 flex items-center gap-2 transition-all"
-            onClick={copyRoomId}
-          >
-            <Copy size={16} />
-            Copy Room ID
-          </Button>
-          <Button 
-            variant="outline"
-            className="w-full bg-white border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700 flex items-center gap-2 transition-all"
-            onClick={leaveRoom}
-          >
-            <LogOut size={16} />
-            Leave Room
-          </Button>
-        </div>
       </div>
+      
+      <div className="mb-8">
+        <h3 className="font-semibold text-gray-700 mb-3">Connected Users</h3>
+        {clients.length > 0 ? (
+          <div className="flex flex-wrap gap-3">
+            {clients.map((client) => (
+              <Client key={client.socketId} username={client.username} />
+            ))}
+          </div>
+        ) : (
+          <div className="text-sm text-purple-400 italic">
+            {initialized ? "No users connected yet..." : "Connecting..."}
+          </div>
+        )}
+      </div>
+      
+      <div className="mt-auto space-y-3">
+        <Button 
+          variant="outline"
+          className="w-full bg-white border-purple-200 text-purple-700 hover:bg-purple-50 hover:text-purple-800 flex items-center gap-2 transition-all"
+          onClick={copyRoomId}
+        >
+          <Copy size={16} />
+          Copy Room ID
+        </Button>
+        <Button 
+          variant="outline"
+          className="w-full bg-white border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700 flex items-center gap-2 transition-all"
+          onClick={leaveRoom}
+        >
+          <LogOut size={16} />
+          Leave Room
+        </Button>
+      </div>
+    </>
+  );
+
+  return (
+    <div className="min-h-screen bg-white text-gray-800 flex flex-col md:flex-row">
+      {/* Desktop Sidebar */}
+      <div className="hidden md:flex w-64 bg-gradient-to-b from-white to-purple-50 p-6 flex-col border-r border-purple-100 shadow-sm">
+        <SidebarContent />
+      </div>
+
+      {/* Mobile Sidebar - Sheet component */}
+      <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
+        <SheetContent side="left" className="w-[85vw] sm:w-[350px] p-6 bg-gradient-to-b from-white to-purple-50">
+          <SidebarContent />
+        </SheetContent>
+      </Sheet>
 
       {/* Main content */}
       <div className="flex-1 flex flex-col h-screen overflow-hidden">
-        {/* Language selector */}
+        {/* Navbar with language selector and mobile menu button */}
         <div className="p-4 border-b border-purple-100 bg-gradient-to-r from-purple-50 to-white flex justify-between items-center">
-          <Select
-            value={language.id.toString()}
-            onValueChange={(value) => {
-              const selectedLang = languageOptions.find(
-                (lang) => lang.id === parseInt(value)
-              );
-              if (selectedLang) {
-                setLanguage(selectedLang);
-              }
-            }}
-          >
-            <SelectTrigger className="w-60 bg-white border-purple-200 focus:ring-purple-400">
-              <SelectValue placeholder="Select language" />
-            </SelectTrigger>
-            <SelectContent className="bg-white border-purple-100">
-              {languageOptions.map((lang) => (
-                <SelectItem key={lang.id} value={lang.id.toString()}>
-                  {lang.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <div className="flex items-center gap-3">
+            {/* Mobile menu trigger */}
+            <Button 
+              variant="ghost" 
+              size="icon" 
+              className="md:hidden"
+              onClick={() => setMobileMenuOpen(true)}
+            >
+              <Users size={20} />
+            </Button>
+            
+            <Select
+              value={language.id.toString()}
+              onValueChange={(value) => {
+                const selectedLang = languageOptions.find(
+                  (lang) => lang.id === parseInt(value)
+                );
+                if (selectedLang) {
+                  setLanguage(selectedLang);
+                }
+              }}
+            >
+              <SelectTrigger className="w-40 md:w-60 bg-white border-purple-200 focus:ring-purple-400">
+                <SelectValue placeholder="Select language" />
+              </SelectTrigger>
+              <SelectContent className="bg-white border-purple-100">
+                {languageOptions.map((lang) => (
+                  <SelectItem key={lang.id} value={lang.id.toString()}>
+                    {lang.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
           
           <div className="text-sm text-purple-600 font-medium">
-            Room: <span className="text-purple-800">{roomId}</span>
+            <span className="hidden sm:inline">Room: </span>
+            <span className="text-purple-800">{roomId}</span>
           </div>
         </div>
         
@@ -263,7 +296,7 @@ function EditorPage() {
           <Button
             onClick={handleCompile}
             disabled={isCompiling}
-            className="absolute bottom-6 right-6 bg-purple-600 hover:bg-purple-700 text-white w-12 h-12 rounded-lg shadow-lg flex items-center justify-center transition-transform hover:scale-105"
+            className="absolute bottom-6 right-6 bg-purple-600 hover:bg-purple-700 text-white w-12 h-12 rounded-lg shadow-lg flex items-center justify-center transition-transform hover:scale-105 z-10"
           >
             {isCompiling ? (
               <div className="animate-spin h-5 w-5 border-2 border-white border-t-transparent rounded-full"/>
@@ -274,7 +307,7 @@ function EditorPage() {
         </div>
 
         {/* Animated squares section for the bottom area - Matching home page animation */}
-        <div className="h-32 relative overflow-hidden bg-gradient-to-b from-purple-50 to-white">
+        <div className="h-16 md:h-32 relative overflow-hidden bg-gradient-to-b from-purple-50 to-white">
           {/* Animated squares - using the same animation as login page */}
           <ul className="squares">
             {Array.from({ length: 10 }).map((_, idx) => (

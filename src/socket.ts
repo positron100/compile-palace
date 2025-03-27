@@ -119,12 +119,12 @@ function mockSocket(): Socket {
     emit: (event: string, ...args: any[]) => {
       console.log(`Mock socket emitted event: ${event}`, args);
       
-      // For JOIN events, immediately trigger the JOINED response
+      // For JOIN events, immediately trigger the JOINED response with only the current user
       if (event === 'join' && args[0]?.roomId && args[0]?.username) {
         setTimeout(() => {
           if (mockSocket._callbacks && mockSocket._callbacks['joined']) {
             mockSocket._callbacks['joined']({
-              clients: getMockClients(args[0].username),
+              clients: [{ socketId: mockSocket.id, username: args[0].username }],
               username: args[0].username,
               socketId: mockSocket.id
             });
@@ -182,21 +182,10 @@ function mockSocket(): Socket {
   return mockSocket;
 }
 
-// Function to get mock clients, always including the current user
+// Function to get mock clients - REMOVED default users
 function getMockClients(currentUsername: string): {socketId: string, username: string}[] {
-  // Start with default mock clients
-  const baseClients = [
-    { socketId: 'mock-1', username: 'User1' },
-    { socketId: 'mock-2', username: 'User2' },
-    { socketId: 'mock-3', username: 'User3' }
-  ];
-  
-  // Create a new client for the current user if not already in the list
-  if (!baseClients.some(client => client.username === currentUsername)) {
-    return [...baseClients, { socketId: `mock-${Math.random().toString(36).substring(2, 9)}`, username: currentUsername }];
-  }
-  
-  return baseClients;
+  // Only include the current user
+  return [{ socketId: `mock-${Math.random().toString(36).substring(2, 9)}`, username: currentUsername }];
 }
 
 // Add mock behavior to simulate a real socket

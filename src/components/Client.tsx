@@ -1,5 +1,7 @@
+
 import React from 'react';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
 interface ClientProps {
   username: string;
@@ -43,18 +45,29 @@ const Client: React.FC<ClientProps> = ({ username }) => {
   };
 
   const avatarColor = getColorFromUsername(username || 'User');
+  const initials = getInitials(username);
 
+  // Use tooltip for longer usernames to show the full name on hover
   return (
-    <div className="flex flex-col items-center gap-1 my-1">
-      <Avatar className="h-10 w-10 border-2 border-white shadow-sm">
-        <AvatarFallback className={`${avatarColor} text-white text-sm font-semibold`}>
-          {getInitials(username)}
-        </AvatarFallback>
-      </Avatar>
-      <span className="text-xs text-purple-700 font-medium truncate max-w-[60px]">
-        {username || 'User'}
-      </span>
-    </div>
+    <TooltipProvider>
+      <div className="flex flex-col items-center gap-1 my-1">
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Avatar className="h-10 w-10 border-2 border-white shadow-sm hover:scale-110 transition-transform">
+              <AvatarFallback className={`${avatarColor} text-white text-sm font-semibold`}>
+                {initials}
+              </AvatarFallback>
+            </Avatar>
+          </TooltipTrigger>
+          <TooltipContent side="right">
+            {username || 'User'}
+          </TooltipContent>
+        </Tooltip>
+        <span className="text-xs text-purple-700 font-medium truncate max-w-[60px] md:max-w-[80px]">
+          {username || 'User'}
+        </span>
+      </div>
+    </TooltipProvider>
   );
 };
 
