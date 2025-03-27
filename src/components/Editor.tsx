@@ -27,6 +27,7 @@ interface EditorProps {
 const Editor: React.FC<EditorProps> = ({ socketRef, roomId, onCodeChange, language }) => {
   const editorRef = useRef<Codemirror.Editor | null>(null);
   const codeChangeRef = useRef<boolean>(false);
+  const localChangeRef = useRef<boolean>(false);
   
   // Set the appropriate mode based on the selected language
   const getModeForLanguage = (langId: number) => {
@@ -57,33 +58,57 @@ const Editor: React.FC<EditorProps> = ({ socketRef, roomId, onCodeChange, langua
           autoCloseTags: true,
           autoCloseBrackets: true,
           lineNumbers: true,
+          undoDepth: 200,
+          historyEventDelay: 200
         }
       );
 
-      // changes will be reflected on console
-      // event emitted for changing the code
+      // Handling code changes carefully to prevent cursor jumps
       editorRef.current.on("change", (instance, changes) => {
         const { origin } = changes;
         const code = instance.getValue();
         
-        // Use code change ref to prevent unnecessary re-renders
-        // Only call the parent component's onCodeChange when needed
-        if (origin !== "setValue") {
+        // If change is from setValue (remote) or we're in the middle of processing a local change, don't re-emit
+        if (origin === "setValue" || codeChangeRef.current) {
+          return;
+        }
+        
+        // Handle local user changes (typing)
+        if (origin === "input" || origin === "+input") {
+          // Mark that we're processing a local change
+          localChangeRef.current = true;
+          
+          // Update parent component without re-render
           onCodeChange(code);
           
-          // Prevent cursor jumping by checking if this is from a socket event
+          // Only emit if not processing another change and socket exists
           if (!codeChangeRef.current && socketRef.current) {
+            // Set flag to prevent re-entry
             codeChangeRef.current = true;
+            
+            // Emit change to other users
             socketRef.current.emit(ACTIONS.CODE_CHANGE, {
               roomId,
               code,
             });
+            
+            // Reset flag after emission
             codeChangeRef.current = false;
           }
+          
+          // Reset local change flag
+          localChangeRef.current = false;
         }
       });
     }
     init(); 
+    
+    return () => {
+      // Cleanup CodeMirror instance
+      if (editorRef.current) {
+        editorRef.current.toTextArea();
+      }
+    };
     // eslint-disable-next-line
   }, []);
 
@@ -95,18 +120,26 @@ const Editor: React.FC<EditorProps> = ({ socketRef, roomId, onCodeChange, langua
   }, [language]);
 
   useEffect(() => {
-    // listening for CODE_CHANGE event
-    // receiving the changed code
+    // listening for CODE_CHANGE event from socket
     if (socketRef.current) {
       socketRef.current.on(ACTIONS.CODE_CHANGE, ({ code }: { code: string }) => {
-        // if code is null then it will get deleted from the editor
-        if (code !== null && editorRef.current) {
+        if (code !== null && editorRef.current && !localChangeRef.current) {
+          // Get current cursor position before update
+          const cursor = editorRef.current.getCursor();
+          
           // Set flag to prevent triggering local change event
           codeChangeRef.current = true;
-          // dynamically adding text to editor
+          
+          // Update editor content
           editorRef.current.setValue(code);
-          // Reset flag after setValue operation
-          codeChangeRef.current = false;
+          
+          // Restore cursor position
+          editorRef.current.setCursor(cursor);
+          
+          // Reset flag after update complete
+          setTimeout(() => {
+            codeChangeRef.current = false;
+          }, 0);
         }
       });
     }

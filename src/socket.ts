@@ -14,22 +14,30 @@ let socket: Socket | null = null;
 let socketInitPromise: Promise<Socket> | null = null;
 let useMockSocket = false;
 
+// Generate a consistent client ID for this session
+const getClientId = (): string => {
+  // Check if we already have an ID stored in sessionStorage
+  let clientId = sessionStorage.getItem('clientId');
+  
+  // If not, create a new one and store it
+  if (!clientId) {
+    clientId = `client-${Math.random().toString(36).substring(2, 9)}-${Date.now()}`;
+    sessionStorage.setItem('clientId', clientId);
+  }
+  
+  return clientId;
+};
+
 export const initSocket = async (): Promise<Socket> => {
-  // If we already have an initialization promise in progress, return it
-  if (socketInitPromise) {
-    return socketInitPromise;
-  }
-  
-  // If we already have a socket and it's connected, return it
-  if (socket && socket.connected) {
-    return socket;
-  }
-  
-  // Reset any existing socket to prevent connection issues with multiple tabs
+  // Always force a new socket connection on initialization
   if (socket) {
+    console.log('Disconnecting existing socket connection');
     socket.disconnect();
     socket = null;
   }
+  
+  // Reset the initialization promise
+  socketInitPromise = null;
   
   // Create a new promise for socket initialization
   socketInitPromise = new Promise<Socket>(async (resolve, reject) => {
@@ -42,8 +50,11 @@ export const initSocket = async (): Promise<Socket> => {
         return;
       }
       
+      // Get the client ID for this session
+      const clientId = getClientId();
+      
       // Try to connect to a real socket server
-      console.log(`Attempting to connect to socket server at ${SERVER_URL}`);
+      console.log(`Attempting to connect to socket server at ${SERVER_URL} with client ID ${clientId}`);
       socket = io(SERVER_URL, {
         transports: ['websocket'],
         reconnection: true,
@@ -51,13 +62,14 @@ export const initSocket = async (): Promise<Socket> => {
         reconnectionDelay: 1000,
         timeout: 10000,
         forceNew: true, // Force new connection to avoid issues with multiple tabs
+        query: { clientId } // Pass the client ID to identify this connection
       });
       
       // Set up connection/error handlers
       const connectionPromise = new Promise<void>((resolveConn, rejectConn) => {
         // Handle successful connection
         socket?.on('connect', () => {
-          console.log('Socket connected successfully');
+          console.log('Socket connected successfully with ID:', socket?.id);
           useMockSocket = false;
           resolveConn();
         });
@@ -76,7 +88,7 @@ export const initSocket = async (): Promise<Socket> => {
           if (socket?.connected !== true) {
             rejectConn(new Error('Socket connection timeout'));
           }
-        }, 5000);
+        }, 3000); // Reduced timeout for faster feedback
         
         // Clear the timeout if we connect successfully
         socket?.on('connect', () => clearTimeout(timeout));
@@ -97,9 +109,6 @@ export const initSocket = async (): Promise<Socket> => {
       } else {
         reject(err);
       }
-    } finally {
-      // Reset the promise once we're done
-      socketInitPromise = null;
     }
   });
   
