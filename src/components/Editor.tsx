@@ -26,6 +26,7 @@ interface EditorProps {
 
 const Editor: React.FC<EditorProps> = ({ socketRef, roomId, onCodeChange, language }) => {
   const editorRef = useRef<Codemirror.Editor | null>(null);
+  const codeChangeRef = useRef<boolean>(false);
   
   // Set the appropriate mode based on the selected language
   const getModeForLanguage = (langId: number) => {
@@ -64,12 +65,21 @@ const Editor: React.FC<EditorProps> = ({ socketRef, roomId, onCodeChange, langua
       editorRef.current.on("change", (instance, changes) => {
         const { origin } = changes;
         const code = instance.getValue();
-        onCodeChange(code);
-        if (origin !== "setValue" && socketRef.current) {
-          socketRef.current.emit(ACTIONS.CODE_CHANGE, {
-            roomId,
-            code,
-          });
+        
+        // Use code change ref to prevent unnecessary re-renders
+        // Only call the parent component's onCodeChange when needed
+        if (origin !== "setValue") {
+          onCodeChange(code);
+          
+          // Prevent cursor jumping by checking if this is from a socket event
+          if (!codeChangeRef.current && socketRef.current) {
+            codeChangeRef.current = true;
+            socketRef.current.emit(ACTIONS.CODE_CHANGE, {
+              roomId,
+              code,
+            });
+            codeChangeRef.current = false;
+          }
         }
       });
     }
@@ -86,13 +96,17 @@ const Editor: React.FC<EditorProps> = ({ socketRef, roomId, onCodeChange, langua
 
   useEffect(() => {
     // listening for CODE_CHANGE event
-    // recieving the changed code
+    // receiving the changed code
     if (socketRef.current) {
       socketRef.current.on(ACTIONS.CODE_CHANGE, ({ code }: { code: string }) => {
         // if code is null then it will get deleted from the editor
         if (code !== null && editorRef.current) {
+          // Set flag to prevent triggering local change event
+          codeChangeRef.current = true;
           // dynamically adding text to editor
           editorRef.current.setValue(code);
+          // Reset flag after setValue operation
+          codeChangeRef.current = false;
         }
       });
     }

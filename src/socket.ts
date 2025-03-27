@@ -25,6 +25,12 @@ export const initSocket = async (): Promise<Socket> => {
     return socket;
   }
   
+  // Reset any existing socket to prevent connection issues with multiple tabs
+  if (socket) {
+    socket.disconnect();
+    socket = null;
+  }
+  
   // Create a new promise for socket initialization
   socketInitPromise = new Promise<Socket>(async (resolve, reject) => {
     try {
@@ -44,6 +50,7 @@ export const initSocket = async (): Promise<Socket> => {
         reconnectionAttempts: 5,
         reconnectionDelay: 1000,
         timeout: 10000,
+        forceNew: true, // Force new connection to avoid issues with multiple tabs
       });
       
       // Set up connection/error handlers
@@ -182,9 +189,9 @@ function mockSocket(): Socket {
   return mockSocket;
 }
 
-// Function to get mock clients - REMOVED default users
+// Function to get mock clients - only include the current user
 function getMockClients(currentUsername: string): {socketId: string, username: string}[] {
-  // Only include the current user
+  // Only include the current user - no default users
   return [{ socketId: `mock-${Math.random().toString(36).substring(2, 9)}`, username: currentUsername }];
 }
 
