@@ -3,11 +3,13 @@ import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { v4 as uuidv4 } from 'uuid';
 import { toast } from "sonner";
+import { useIsMobile } from '@/hooks/use-mobile';
 
 const Index = () => {
   const navigate = useNavigate();
   const [roomId, setRoomId] = React.useState('');
   const [username, setUsername] = React.useState('');
+  const isMobile = useIsMobile();
 
   const createNewRoom = (e: React.MouseEvent<HTMLButtonElement>) => {
     e.preventDefault();
@@ -36,7 +38,7 @@ const Index = () => {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-100 relative overflow-hidden px-4 sm:px-0">
+    <div className="min-h-screen flex items-center justify-center bg-gray-100 relative overflow-hidden px-6 sm:px-8">
       <div className="bg-white rounded-lg shadow-lg p-6 sm:p-8 w-full max-w-md z-10">
         <div className="text-center mb-6">
           <h1 className="text-3xl font-bold text-gray-800">Compile Palace</h1>

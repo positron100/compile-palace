@@ -1,4 +1,3 @@
-
 import { io, Socket } from 'socket.io-client';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -8,9 +7,9 @@ const SERVER_URL = import.meta.env.VITE_SERVER_URL || 'http://localhost:5000';
 // Global socket instance
 let socket: Socket | null = null;
 
-// Client ID management
+// Client ID management with more robust uniqueness
 const getClientId = (): string => {
-  // Use sessionStorage to maintain ID within a tab, but ensure it's unique
+  // Use sessionStorage to maintain ID within a tab
   let clientId = sessionStorage.getItem('clientId');
   if (!clientId) {
     // Generate a truly unique ID with timestamp and random component
@@ -21,14 +20,18 @@ const getClientId = (): string => {
   return clientId;
 };
 
-// Function to create a mock socket for development when server is unavailable
+// Enhanced mock socket to better simulate real-time collaboration
 const createMockSocket = (): Socket => {
   console.log('Creating mock socket for offline mode');
+  
+  // Keep track of clients and room data
+  const mockRooms: Record<string, {clients: Array<{socketId: string, username: string}>}> = {};
+  const mockSocketId = `mock-${uuidv4()}`;
   
   // Create a basic event emitter to simulate socket behavior
   const events: Record<string, Function[]> = {};
   const mockSocket = {
-    id: `mock-${uuidv4()}`,
+    id: mockSocketId,
     connected: true,
     
     // Core socket.io methods
@@ -54,20 +57,47 @@ const createMockSocket = (): Socket => {
     emit: (event: string, ...args: any[]) => {
       console.log(`Mock socket: Emitted "${event}"`, args);
       
-      // Special case for join events - simulate server response
+      // Special case for join events - simulate server response with all room clients
       if (event === 'join' && args[0]?.roomId && args[0]?.username) {
+        const { roomId, username } = args[0];
+        
+        // Initialize room if it doesn't exist
+        if (!mockRooms[roomId]) {
+          mockRooms[roomId] = { clients: [] };
+        }
+        
+        // Check if user already exists in the room
+        const existingClientIndex = mockRooms[roomId].clients.findIndex(
+          client => client.username === username
+        );
+        
+        if (existingClientIndex >= 0) {
+          // Update existing client
+          mockRooms[roomId].clients[existingClientIndex] = { 
+            socketId: mockSocketId, 
+            username 
+          };
+        } else {
+          // Add new client to room
+          mockRooms[roomId].clients.push({ 
+            socketId: mockSocketId, 
+            username 
+          });
+        }
+        
+        // Simulate server broadcasting joined event to all clients in the room
         setTimeout(() => {
           const joinedCallbacks = events['joined'] || [];
           joinedCallbacks.forEach(cb => cb({
-            clients: [{ socketId: mockSocket.id, username: args[0].username }],
-            username: args[0].username,
-            socketId: mockSocket.id
+            clients: mockRooms[roomId].clients,
+            username: username,
+            socketId: mockSocketId
           }));
         }, 100);
       }
       
-      // Echo code changes back in offline mode
-      if (event === 'code-change' && args[0]?.code) {
+      // Echo code changes back in offline mode to simulate real-time collaboration
+      if (event === 'code-change' && args[0]?.roomId && args[0]?.code) {
         setTimeout(() => {
           const codeChangeCallbacks = events['code-change'] || [];
           codeChangeCallbacks.forEach(cb => cb({ code: args[0].code }));
@@ -92,7 +122,7 @@ const createMockSocket = (): Socket => {
   return mockSocket;
 };
 
-// Main socket initialization function
+// Main socket initialization function with improved handling
 export const initSocket = async (): Promise<Socket> => {
   // Always disconnect existing socket before creating a new one
   if (socket) {

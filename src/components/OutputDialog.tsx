@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { X } from 'lucide-react';
+import { useIsMobile } from '@/hooks/use-mobile';
 import { Button } from './ui/button';
 import {
   Dialog,
@@ -35,13 +35,17 @@ const OutputDialog: React.FC<OutputDialogProps> = ({
   onOpenChange,
   outputDetails,
 }) => {
+  const isMobile = useIsMobile();
+  
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[600px] max-h-[80vh] overflow-auto px-4 sm:px-6">
+      <DialogContent className={`
+        ${isMobile ? 'w-[90vw] p-3' : 'sm:max-w-[600px] px-4 sm:px-6'} 
+        max-h-[80vh] overflow-auto
+      `}>
         <DialogHeader>
           <DialogTitle className="flex justify-between items-center">
             <span>Execution Results</span>
-            {/* Removed the close button here to avoid duplication */}
           </DialogTitle>
           <DialogDescription>
             {outputDetails?.status && (
@@ -60,7 +64,7 @@ const OutputDialog: React.FC<OutputDialogProps> = ({
               {outputDetails.stdout && (
                 <div>
                   <h3 className="text-sm font-medium mb-1">Standard Output:</h3>
-                  <pre className="bg-slate-50 p-3 rounded-md text-sm overflow-auto max-h-[200px]">
+                  <pre className={`bg-slate-50 p-3 rounded-md text-sm overflow-auto ${isMobile ? 'max-h-[150px]' : 'max-h-[200px]'}`}>
                     {outputDetails.stdout}
                   </pre>
                 </div>
@@ -69,7 +73,7 @@ const OutputDialog: React.FC<OutputDialogProps> = ({
               {outputDetails.stderr && (
                 <div>
                   <h3 className="text-sm font-medium mb-1">Standard Error:</h3>
-                  <pre className="bg-red-50 p-3 rounded-md text-sm text-red-700 overflow-auto max-h-[200px]">
+                  <pre className={`bg-red-50 p-3 rounded-md text-sm text-red-700 overflow-auto ${isMobile ? 'max-h-[150px]' : 'max-h-[200px]'}`}>
                     {outputDetails.stderr}
                   </pre>
                 </div>
@@ -78,14 +82,14 @@ const OutputDialog: React.FC<OutputDialogProps> = ({
               {outputDetails.compile_output && (
                 <div>
                   <h3 className="text-sm font-medium mb-1">Compilation Output:</h3>
-                  <pre className="bg-amber-50 p-3 rounded-md text-sm text-amber-700 overflow-auto max-h-[200px]">
+                  <pre className={`bg-amber-50 p-3 rounded-md text-sm text-amber-700 overflow-auto ${isMobile ? 'max-h-[150px]' : 'max-h-[200px]'}`}>
                     {outputDetails.compile_output}
                   </pre>
                 </div>
               )}
               
               {(outputDetails.time || outputDetails.memory) && (
-                <div className="flex gap-6 text-sm text-slate-600">
+                <div className="flex flex-wrap gap-3 sm:gap-6 text-sm text-slate-600">
                   {outputDetails.time && (
                     <div className="flex items-center gap-1">
                       <span className="font-medium">Time:</span> {outputDetails.time}s

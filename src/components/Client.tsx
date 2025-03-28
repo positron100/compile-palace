@@ -2,12 +2,15 @@
 import React from 'react';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { useIsMobile } from '@/hooks/use-mobile';
 
 interface ClientProps {
   username: string;
 }
 
 const Client: React.FC<ClientProps> = ({ username }) => {
+  const isMobile = useIsMobile();
+  
   // Generate a consistent color based on username
   const getColorFromUsername = (name: string) => {
     const colors = [
@@ -53,17 +56,17 @@ const Client: React.FC<ClientProps> = ({ username }) => {
       <div className="flex flex-col items-center gap-1 my-1 px-1">
         <Tooltip>
           <TooltipTrigger asChild>
-            <Avatar className="h-10 w-10 border-2 border-white shadow-sm hover:scale-110 transition-transform">
+            <Avatar className={`${isMobile ? 'h-8 w-8' : 'h-10 w-10'} border-2 border-white shadow-sm hover:scale-110 transition-transform`}>
               <AvatarFallback className={`${avatarColor} text-white text-sm font-semibold`}>
                 {initials}
               </AvatarFallback>
             </Avatar>
           </TooltipTrigger>
-          <TooltipContent side="right">
+          <TooltipContent side={isMobile ? "bottom" : "right"}>
             {username || 'User'}
           </TooltipContent>
         </Tooltip>
-        <span className="text-xs text-purple-700 font-medium truncate max-w-[60px] md:max-w-[80px]">
+        <span className={`text-xs text-purple-700 font-medium truncate ${isMobile ? 'max-w-[50px]' : 'max-w-[60px] md:max-w-[80px]'}`}>
           {username || 'User'}
         </span>
       </div>
