@@ -56,7 +56,7 @@ const Client: React.FC<ClientProps> = ({ username }) => {
       <div className="flex flex-col items-center gap-1 my-1 px-1">
         <Tooltip>
           <TooltipTrigger asChild>
-            <Avatar className={`${isMobile ? 'h-8 w-8' : 'h-10 w-10'} border-2 border-white shadow-sm hover:scale-110 transition-transform cursor-pointer`}>
+            <Avatar className={`${isMobile ? 'h-9 w-9' : 'h-11 w-11'} border-2 border-white shadow-sm hover:scale-110 transition-transform cursor-pointer`}>
               <AvatarFallback className={`${avatarColor} text-white text-sm font-semibold rounded-full`}>
                 {initials}
               </AvatarFallback>
@@ -66,7 +66,7 @@ const Client: React.FC<ClientProps> = ({ username }) => {
             {username || 'User'}
           </TooltipContent>
         </Tooltip>
-        <span className={`text-xs text-purple-700 font-medium truncate ${isMobile ? 'max-w-[50px]' : 'max-w-[60px] md:max-w-[80px]'}`}>
+        <span className={`text-xs text-purple-700 font-medium truncate ${isMobile ? 'max-w-[55px]' : 'max-w-[70px] md:max-w-[80px]'}`}>
           {username || 'User'}
         </span>
       </div>

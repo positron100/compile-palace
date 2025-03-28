@@ -40,8 +40,8 @@ const OutputDialog: React.FC<OutputDialogProps> = ({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className={`
-        ${isMobile ? 'w-[90vw] p-3' : 'sm:max-w-[600px] px-4 sm:px-6'} 
-        max-h-[80vh] overflow-auto rounded-xl
+        ${isMobile ? 'w-[90vw] p-4' : 'sm:max-w-[600px] px-6 py-5'} 
+        max-h-[80vh] overflow-auto rounded-xl shadow-lg border border-purple-100
       `}>
         <DialogHeader>
           <DialogTitle className="flex justify-between items-center">

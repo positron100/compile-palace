@@ -52,7 +52,7 @@ const Editor: React.FC<EditorProps> = ({ socketRef, roomId, onCodeChange, langua
     }
   }, [socketRef.current, roomId]);
 
-  // initializing code editor
+  // Initializing code editor
   useEffect(() => {
     async function init() {
       const textarea = document.getElementById("realtimeEditor");
