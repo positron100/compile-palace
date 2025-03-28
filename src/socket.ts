@@ -1,3 +1,4 @@
+
 import { io, Socket } from 'socket.io-client';
 import { v4 as uuidv4 } from 'uuid';
 import ACTIONS from './Actions';
@@ -41,6 +42,11 @@ const getAllConnectedClients = (roomId: string) => {
   });
 };
 
+// Type definition for our mock socket to avoid TypeScript errors
+interface ExtendedSocket extends Socket {
+  mockRooms?: Set<string>;
+}
+
 // Enhanced mock socket to closely mirror the original server implementation
 const createMockSocket = (): Socket => {
   console.log('Creating mock socket for offline mode');
@@ -50,10 +56,12 @@ const createMockSocket = (): Socket => {
   
   // Create event system to simulate socket behavior
   const events: Record<string, Function[]> = {};
-  const mockSocket = {
+  const mockRooms = new Set<string>();
+  
+  const mockSocket: ExtendedSocket = {
     id: mockSocketId,
     connected: true,
-    rooms: new Set<string>(),
+    mockRooms, // Store rooms in a separate property to avoid TypeScript errors
     
     on: (event: string, callback: Function) => {
       console.log(`Mock socket: Registered listener for "${event}"`);
@@ -85,7 +93,7 @@ const createMockSocket = (): Socket => {
         mockData.userSocketMap[mockSocketId] = username;
         
         // Add socket to room
-        mockSocket.rooms.add(roomId);
+        mockRooms.add(roomId);
         
         // Initialize room if it doesn't exist
         if (!mockData.rooms[roomId]) {
@@ -141,7 +149,7 @@ const createMockSocket = (): Socket => {
       if (event === 'disconnecting') {
         // Broadcast DISCONNECTED to all rooms this socket is in
         setTimeout(() => {
-          mockSocket.rooms.forEach((roomId) => {
+          mockRooms.forEach((roomId) => {
             if (mockData.rooms[roomId]) {
               Array.from(mockData.rooms[roomId]).forEach((socketId: string) => {
                 if (socketId !== mockSocketId) {
@@ -165,7 +173,7 @@ const createMockSocket = (): Socket => {
           
           // Remove from user socket map
           delete mockData.userSocketMap[mockSocketId];
-          mockSocket.rooms.clear();
+          mockRooms.clear();
         }, 50);
       }
       
@@ -173,11 +181,12 @@ const createMockSocket = (): Socket => {
     },
     
     join: (roomId: string) => {
-      mockSocket.rooms.add(roomId);
+      mockRooms.add(roomId);
       if (!mockData.rooms[roomId]) {
         mockData.rooms[roomId] = new Set();
       }
       mockData.rooms[roomId].add(mockSocketId);
+      return mockSocket;
     },
     
     in: (roomId: string) => {
@@ -217,8 +226,24 @@ const createMockSocket = (): Socket => {
     // Other required socket.io methods
     io: null as any,
     nsp: '',
-    connect: () => mockSocket
-  } as unknown as Socket;
+    connect: () => mockSocket,
+    
+    // Add any missing required methods from Socket interface
+    volatile: mockSocket as any,
+    timeout: () => mockSocket as any,
+    send: () => mockSocket as any,
+    binary: () => mockSocket as any,
+    compress: () => mockSocket as any,
+    emitWithAck: () => Promise.resolve(),
+    listeners: () => [],
+    hasListeners: () => false,
+    onAny: () => mockSocket as any,
+    prependAny: () => mockSocket as any,
+    offAny: () => mockSocket as any,
+    listenersAny: () => [],
+    eventNames: () => [],
+    decorate: () => mockSocket as any,
+  } as Socket;
   
   return mockSocket;
 };
