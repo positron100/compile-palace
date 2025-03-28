@@ -53,36 +53,37 @@ const createMockSocket = (): Socket => {
   
   const mockData = (window as any).__mockData;
   const mockSocketId = `mock-${uuidv4()}`;
+  const mockRooms = new Set<string>();
   
   // Create event system to simulate socket behavior
   const events: Record<string, Function[]> = {};
-  const mockRooms = new Set<string>();
   
-  const mockSocket: ExtendedSocket = {
+  // First create a blank object for our mock socket
+  const mockSocketBase: any = {
     id: mockSocketId,
     connected: true,
     mockRooms, // Store rooms in a separate property to avoid TypeScript errors
     
-    on: (event: string, callback: Function) => {
+    on: function(event: string, callback: Function) {
       console.log(`Mock socket: Registered listener for "${event}"`);
       if (!events[event]) events[event] = [];
       events[event].push(callback);
-      return mockSocket;
+      return this;
     },
     
-    off: (event: string, callback?: Function) => {
+    off: function(event: string, callback?: Function) {
       console.log(`Mock socket: Removed listener for "${event}"`);
-      if (!events[event]) return mockSocket;
+      if (!events[event]) return this;
       
       if (callback) {
         events[event] = events[event].filter(cb => cb !== callback);
       } else {
         delete events[event];
       }
-      return mockSocket;
+      return this;
     },
     
-    emit: (event: string, ...args: any[]) => {
+    emit: function(event: string, ...args: any[]) {
       console.log(`Mock socket: Emitted "${event}"`, args);
       
       // Handle JOIN event - mirror server implementation
@@ -177,19 +178,19 @@ const createMockSocket = (): Socket => {
         }, 50);
       }
       
-      return mockSocket;
+      return this;
     },
     
-    join: (roomId: string) => {
+    join: function(roomId: string) {
       mockRooms.add(roomId);
       if (!mockData.rooms[roomId]) {
         mockData.rooms[roomId] = new Set();
       }
       mockData.rooms[roomId].add(mockSocketId);
-      return mockSocket;
+      return this;
     },
     
-    in: (roomId: string) => {
+    in: function(roomId: string) {
       return {
         emit: (event: string, data: any) => {
           if (mockData.rooms[roomId]) {
@@ -204,7 +205,7 @@ const createMockSocket = (): Socket => {
       };
     },
     
-    to: (socketId: string) => {
+    to: function(socketId: string) {
       return {
         emit: (event: string, data: any) => {
           const callbacks = events[event] || [];
@@ -213,39 +214,38 @@ const createMockSocket = (): Socket => {
       };
     },
     
-    disconnect: () => {
+    disconnect: function() {
       console.log('Mock socket: Disconnected');
       
       // Run disconnecting event handlers
-      mockSocket.emit('disconnecting');
+      this.emit('disconnecting');
       
       // Clear all event listeners
       Object.keys(events).forEach(event => delete events[event]);
     },
     
-    // Other required socket.io methods
-    io: null as any,
+    // Required socket.io methods
+    io: null,
     nsp: '',
-    connect: () => mockSocket,
-    
-    // Add any missing required methods from Socket interface
-    volatile: mockSocket as any,
-    timeout: () => mockSocket as any,
-    send: () => mockSocket as any,
-    binary: () => mockSocket as any,
-    compress: () => mockSocket as any,
-    emitWithAck: () => Promise.resolve(),
-    listeners: () => [],
-    hasListeners: () => false,
-    onAny: () => mockSocket as any,
-    prependAny: () => mockSocket as any,
-    offAny: () => mockSocket as any,
-    listenersAny: () => [],
-    eventNames: () => [],
-    decorate: () => mockSocket as any,
-  } as Socket;
+    connect: function() { return this; },
+    volatile: {},
+    timeout: function() { return this; },
+    send: function() { return this; },
+    binary: function() { return this; },
+    compress: function() { return this; },
+    emitWithAck: function() { return Promise.resolve(); },
+    listeners: function() { return []; },
+    hasListeners: function() { return false; },
+    onAny: function() { return this; },
+    prependAny: function() { return this; },
+    offAny: function() { return this; },
+    listenersAny: function() { return []; },
+    eventNames: function() { return []; },
+    decorate: function() { return this; }
+  };
   
-  return mockSocket;
+  // Cast our mock socket to Socket type
+  return mockSocketBase as Socket;
 };
 
 // Socket initialization function
