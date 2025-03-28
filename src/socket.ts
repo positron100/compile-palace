@@ -1,5 +1,6 @@
 import { io, Socket } from 'socket.io-client';
 import { v4 as uuidv4 } from 'uuid';
+import ACTIONS from './Actions';
 
 // For production, use a deployed backend URL
 const SERVER_URL = import.meta.env.VITE_SERVER_URL || 'http://localhost:5000';
@@ -7,38 +8,53 @@ const SERVER_URL = import.meta.env.VITE_SERVER_URL || 'http://localhost:5000';
 // Global socket instance
 let socket: Socket | null = null;
 
-// Global mock room data to share state across browser tabs
-if (typeof window !== 'undefined' && !(window as any).__mockRooms) {
-  (window as any).__mockRooms = {};
+// Global mock data to replicate server behavior
+if (typeof window !== 'undefined') {
+  if (!(window as any).__mockData) {
+    (window as any).__mockData = {
+      rooms: {},
+      userSocketMap: {}
+    };
+  }
 }
 
-// Client ID management with more robust uniqueness
+// Client ID management
 const getClientId = (): string => {
-  // Use sessionStorage to maintain ID within a tab
   let clientId = sessionStorage.getItem('clientId');
   if (!clientId) {
-    // Generate a truly unique ID with timestamp and random component
     clientId = `client-${Date.now()}-${uuidv4()}`;
     sessionStorage.setItem('clientId', clientId);
   }
   return clientId;
 };
 
-// Enhanced mock socket to better simulate real-time collaboration
+// Get all connected clients in a room (for mock mode)
+const getAllConnectedClients = (roomId: string) => {
+  const mockData = (window as any).__mockData;
+  if (!mockData.rooms[roomId]) return [];
+  
+  return Array.from(mockData.rooms[roomId] || []).map((socketId: string) => {
+    return {
+      socketId,
+      username: mockData.userSocketMap[socketId],
+    };
+  });
+};
+
+// Enhanced mock socket to closely mirror the original server implementation
 const createMockSocket = (): Socket => {
   console.log('Creating mock socket for offline mode');
   
-  // Use the global mockRooms object for shared state across tabs
-  const mockRooms = (window as any).__mockRooms;
+  const mockData = (window as any).__mockData;
   const mockSocketId = `mock-${uuidv4()}`;
   
-  // Create a basic event emitter to simulate socket behavior
+  // Create event system to simulate socket behavior
   const events: Record<string, Function[]> = {};
   const mockSocket = {
     id: mockSocketId,
     connected: true,
+    rooms: new Set<string>(),
     
-    // Core socket.io methods
     on: (event: string, callback: Function) => {
       console.log(`Mock socket: Registered listener for "${event}"`);
       if (!events[event]) events[event] = [];
@@ -61,129 +77,144 @@ const createMockSocket = (): Socket => {
     emit: (event: string, ...args: any[]) => {
       console.log(`Mock socket: Emitted "${event}"`, args);
       
-      // Special case for join events - simulate server response with all room clients
-      if (event === 'join' && args[0]?.roomId && args[0]?.username) {
+      // Handle JOIN event - mirror server implementation
+      if (event === ACTIONS.JOIN && args[0]?.roomId && args[0]?.username) {
         const { roomId, username } = args[0];
         
+        // Add user to socket map (like userSocketMap on server)
+        mockData.userSocketMap[mockSocketId] = username;
+        
+        // Add socket to room
+        mockSocket.rooms.add(roomId);
+        
         // Initialize room if it doesn't exist
-        if (!mockRooms[roomId]) {
-          mockRooms[roomId] = { 
-            clients: [],
-            latestCode: '' 
-          };
+        if (!mockData.rooms[roomId]) {
+          mockData.rooms[roomId] = new Set();
         }
+        mockData.rooms[roomId].add(mockSocketId);
         
-        // Check if user already exists in the room
-        const existingClientIndex = mockRooms[roomId].clients.findIndex(
-          (client: any) => client.username === username
-        );
+        // Get all clients in room
+        const clients = getAllConnectedClients(roomId);
         
-        if (existingClientIndex >= 0) {
-          // Update existing client
-          mockRooms[roomId].clients[existingClientIndex] = { 
-            socketId: mockSocketId, 
-            username 
-          };
-        } else {
-          // Add new client to room
-          mockRooms[roomId].clients.push({ 
-            socketId: mockSocketId, 
-            username 
-          });
-        }
-        
-        // Simulate server broadcasting joined event to all clients in the room
+        // Broadcast JOINED event to all clients in room (including self)
         setTimeout(() => {
-          const joinedCallbacks = events['joined'] || [];
-          joinedCallbacks.forEach(cb => cb({
-            clients: mockRooms[roomId].clients,
-            username,
-            socketId: mockSocketId
-          }));
-          
-          // If there's existing code in the room, sync it to the new client
-          if (mockRooms[roomId].latestCode) {
-            const syncCodeCallbacks = events['sync-code'] || [];
-            syncCodeCallbacks.forEach(cb => cb({
-              code: mockRooms[roomId].latestCode
+          clients.forEach(({ socketId }) => {
+            const joinedCallbacks = events[ACTIONS.JOINED] || [];
+            joinedCallbacks.forEach(cb => cb({
+              clients,
+              username,
+              socketId: mockSocketId
             }));
-          }
+          });
         }, 100);
       }
       
-      // Handle code sync requests
-      if (event === 'sync-code' && args[0]?.roomId) {
-        const roomId = args[0].roomId;
+      // Handle CODE_CHANGE event
+      if (event === ACTIONS.CODE_CHANGE && args[0]?.roomId && args[0]?.code) {
+        const { roomId, code } = args[0];
         
-        // Send back the latest code if it exists
-        if (mockRooms[roomId]?.latestCode) {
-          setTimeout(() => {
-            const syncCodeCallbacks = events['sync-code'] || [];
-            syncCodeCallbacks.forEach(cb => cb({
-              code: mockRooms[roomId].latestCode
-            }));
-          }, 50);
-        }
+        // Broadcast to all other clients in room
+        setTimeout(() => {
+          if (mockData.rooms[roomId]) {
+            Array.from(mockData.rooms[roomId]).forEach((socketId: string) => {
+              if (socketId !== mockSocketId) { // Don't send back to self
+                const codeChangeCallbacks = events[ACTIONS.CODE_CHANGE] || [];
+                codeChangeCallbacks.forEach(cb => cb({ code }));
+              }
+            });
+          }
+        }, 50);
       }
       
-      // Echo code changes back in offline mode to simulate real-time collaboration
-      if (event === 'code-change' && args[0]?.roomId && args[0]?.code) {
-        const roomId = args[0].roomId;
-        const code = args[0].code;
+      // Handle SYNC_CODE event
+      if (event === ACTIONS.SYNC_CODE && args[0]?.socketId && args[0]?.code) {
+        const { socketId, code } = args[0];
         
-        // Store the latest code in the room
-        if (!mockRooms[roomId]) {
-          mockRooms[roomId] = { clients: [], latestCode: code };
-        } else {
-          mockRooms[roomId].latestCode = code;
-        }
-        
-        // Broadcast to all "clients" in this room by triggering code-change
+        // Send code only to the specific client
         setTimeout(() => {
-          const codeChangeCallbacks = events['code-change'] || [];
+          const codeChangeCallbacks = events[ACTIONS.CODE_CHANGE] || [];
           codeChangeCallbacks.forEach(cb => cb({ code }));
         }, 50);
       }
       
-      // Handle disconnection/leave events
-      if (event === 'leave' && args[0]?.roomId) {
-        const roomId = args[0].roomId;
-        
-        if (mockRooms[roomId]) {
-          // Remove this client from the room
-          mockRooms[roomId].clients = mockRooms[roomId].clients.filter(
-            (client: any) => client.socketId !== mockSocketId
-          );
+      // Handle disconnection
+      if (event === 'disconnecting') {
+        // Broadcast DISCONNECTED to all rooms this socket is in
+        setTimeout(() => {
+          mockSocket.rooms.forEach((roomId) => {
+            if (mockData.rooms[roomId]) {
+              Array.from(mockData.rooms[roomId]).forEach((socketId: string) => {
+                if (socketId !== mockSocketId) {
+                  const disconnectedCallbacks = events[ACTIONS.DISCONNECTED] || [];
+                  disconnectedCallbacks.forEach(cb => cb({
+                    socketId: mockSocketId,
+                    username: mockData.userSocketMap[mockSocketId]
+                  }));
+                }
+              });
+              
+              // Remove this socket from the room
+              mockData.rooms[roomId].delete(mockSocketId);
+              
+              // Clean up empty rooms
+              if (mockData.rooms[roomId].size === 0) {
+                delete mockData.rooms[roomId];
+              }
+            }
+          });
           
-          // Notify other "clients" about disconnection
-          if (mockRooms[roomId].clients.length > 0) {
-            const disconnectedCallbacks = events['disconnected'] || [];
-            disconnectedCallbacks.forEach(cb => cb({
-              socketId: mockSocketId,
-              username: 'User' // We don't track which username disconnected in this simple mock
-            }));
-          }
-        }
+          // Remove from user socket map
+          delete mockData.userSocketMap[mockSocketId];
+          mockSocket.rooms.clear();
+        }, 50);
       }
       
       return mockSocket;
     },
     
+    join: (roomId: string) => {
+      mockSocket.rooms.add(roomId);
+      if (!mockData.rooms[roomId]) {
+        mockData.rooms[roomId] = new Set();
+      }
+      mockData.rooms[roomId].add(mockSocketId);
+    },
+    
+    in: (roomId: string) => {
+      return {
+        emit: (event: string, data: any) => {
+          if (mockData.rooms[roomId]) {
+            Array.from(mockData.rooms[roomId]).forEach((socketId: string) => {
+              if (socketId !== mockSocketId) { // Don't send to self
+                const callbacks = events[event] || [];
+                callbacks.forEach(cb => cb(data));
+              }
+            });
+          }
+        }
+      };
+    },
+    
+    to: (socketId: string) => {
+      return {
+        emit: (event: string, data: any) => {
+          const callbacks = events[event] || [];
+          callbacks.forEach(cb => cb(data));
+        }
+      };
+    },
+    
     disconnect: () => {
       console.log('Mock socket: Disconnected');
       
-      // Clean up this client from all rooms
-      Object.keys(mockRooms).forEach(roomId => {
-        mockRooms[roomId].clients = mockRooms[roomId].clients.filter(
-          (client: any) => client.socketId !== mockSocketId
-        );
-      });
+      // Run disconnecting event handlers
+      mockSocket.emit('disconnecting');
       
       // Clear all event listeners
       Object.keys(events).forEach(event => delete events[event]);
     },
     
-    // Other required socket.io methods with minimal implementation
+    // Other required socket.io methods
     io: null as any,
     nsp: '',
     connect: () => mockSocket
@@ -192,16 +223,15 @@ const createMockSocket = (): Socket => {
   return mockSocket;
 };
 
-// Main socket initialization function with improved handling
+// Socket initialization function
 export const initSocket = async (): Promise<Socket> => {
-  // Always disconnect existing socket before creating a new one
+  // Disconnect existing socket
   if (socket) {
     console.log('Disconnecting existing socket connection');
     socket.disconnect();
     socket = null;
   }
   
-  // Get the client ID for this session
   const clientId = getClientId();
   console.log(`Initializing socket with client ID: ${clientId}`);
   
@@ -214,37 +244,29 @@ export const initSocket = async (): Promise<Socket> => {
       reconnectionAttempts: 5,
       reconnectionDelay: 1000,
       timeout: 10000,
-      forceNew: true, // Force new connection to avoid issues with multiple tabs
-      query: { clientId } // Pass client ID with connection
+      forceNew: true,
+      query: { clientId }
     });
     
-    // Return a promise that resolves when connected or rejects on error
     return new Promise((resolve, reject) => {
-      // Set a connection timeout
       const timeoutId = setTimeout(() => {
         if (!socket?.connected) {
-          console.error('Socket connection timeout after 10 seconds');
-          
-          // Instead of rejecting, try to provide a mock socket
-          console.log('Falling back to mock socket implementation');
+          console.error('Socket connection timeout - falling back to mock socket');
           socket = createMockSocket();
           resolve(socket);
         }
-      }, 5000); // Reduced timeout for faster testing
+      }, 5000);
       
-      // Handle successful connection
       socket.on('connect', () => {
         console.log('Socket connected successfully with ID:', socket?.id);
         clearTimeout(timeoutId);
         resolve(socket as Socket);
       });
       
-      // Handle connection error
       socket.on('connect_error', (err) => {
         console.error('Socket connection error:', err);
         clearTimeout(timeoutId);
         
-        // Instead of rejecting, try to provide a mock socket
         console.log('Socket error, falling back to mock socket implementation');
         socket = createMockSocket();
         resolve(socket);
@@ -253,12 +275,11 @@ export const initSocket = async (): Promise<Socket> => {
   } catch (err) {
     console.error('Socket initialization error:', err);
     
-    // In development or if real connection fails, use mock socket
     console.log('Falling back to mock socket implementation');
     socket = createMockSocket();
     return socket;
   }
 };
 
-// Export the current socket instance for direct access if needed
+// Export the current socket instance
 export const getSocket = (): Socket | null => socket;

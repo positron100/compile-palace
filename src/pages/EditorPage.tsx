@@ -1,4 +1,3 @@
-
 import React, { useEffect, useRef, useState, useCallback } from "react";
 import Client from "../components/Client";
 import Editor from "../components/Editor";
@@ -214,7 +213,11 @@ function EditorPage() {
         {clients.length > 0 ? (
           <div className="flex flex-wrap gap-3">
             {clients.map((client) => (
-              <Client key={client.socketId} username={client.username} />
+              <Client 
+                key={client.socketId} 
+                username={client.username} 
+                socketId={client.socketId} 
+              />
             ))}
           </div>
         ) : (

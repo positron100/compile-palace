@@ -6,9 +6,10 @@ import { useIsMobile } from '@/hooks/use-mobile';
 
 interface ClientProps {
   username: string;
+  socketId?: string; // Add socket ID for unique identification
 }
 
-const Client: React.FC<ClientProps> = ({ username }) => {
+const Client: React.FC<ClientProps> = ({ username, socketId }) => {
   const isMobile = useIsMobile();
   
   // Generate a consistent color based on username
@@ -28,7 +29,7 @@ const Client: React.FC<ClientProps> = ({ username }) => {
     return colors[hash % colors.length];
   };
 
-  // Get initials from username (first letter or first two letters)
+  // Get initials from username
   const getInitials = (name: string) => {
     if (!name) return '?';
     
@@ -50,10 +51,9 @@ const Client: React.FC<ClientProps> = ({ username }) => {
   const avatarColor = getColorFromUsername(username || 'User');
   const initials = getInitials(username);
 
-  // Use tooltip for longer usernames to show the full name on hover
   return (
     <TooltipProvider>
-      <div className="flex flex-col items-center gap-1 my-1 px-1">
+      <div className="flex flex-col items-center gap-1 my-1 px-1" key={socketId}>
         <Tooltip>
           <TooltipTrigger asChild>
             <Avatar className={`${isMobile ? 'h-9 w-9' : 'h-11 w-11'} border-2 border-white shadow-sm hover:scale-110 transition-transform cursor-pointer`}>
