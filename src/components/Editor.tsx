@@ -44,6 +44,14 @@ const Editor: React.FC<EditorProps> = ({ socketRef, roomId, onCodeChange, langua
     }
   };
 
+  // Request initial code when joining a room
+  useEffect(() => {
+    if (socketRef.current && roomId) {
+      console.log("Requesting initial code for room:", roomId);
+      socketRef.current.emit(ACTIONS.SYNC_CODE, { roomId });
+    }
+  }, [socketRef.current, roomId]);
+
   // initializing code editor
   useEffect(() => {
     async function init() {
@@ -148,15 +156,20 @@ const Editor: React.FC<EditorProps> = ({ socketRef, roomId, onCodeChange, langua
       setTimeout(() => {
         ignoreChangeRef.current = false;
       }, 0);
+      
+      // Update parent component
+      onCodeChange(code);
     };
     
-    // Register event handler
+    // Register event handlers
     socketRef.current.on(ACTIONS.CODE_CHANGE, handleRemoteChange);
+    socketRef.current.on(ACTIONS.SYNC_CODE, handleRemoteChange);
     
     // Cleanup
     return () => {
       if (socketRef.current) {
         socketRef.current.off(ACTIONS.CODE_CHANGE, handleRemoteChange);
+        socketRef.current.off(ACTIONS.SYNC_CODE, handleRemoteChange);
       }
     };
   }, [socketRef.current]); // Only re-run if socket reference changes

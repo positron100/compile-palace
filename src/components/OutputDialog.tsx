@@ -41,7 +41,7 @@ const OutputDialog: React.FC<OutputDialogProps> = ({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className={`
         ${isMobile ? 'w-[90vw] p-3' : 'sm:max-w-[600px] px-4 sm:px-6'} 
-        max-h-[80vh] overflow-auto
+        max-h-[80vh] overflow-auto rounded-xl
       `}>
         <DialogHeader>
           <DialogTitle className="flex justify-between items-center">
@@ -64,7 +64,7 @@ const OutputDialog: React.FC<OutputDialogProps> = ({
               {outputDetails.stdout && (
                 <div>
                   <h3 className="text-sm font-medium mb-1">Standard Output:</h3>
-                  <pre className={`bg-slate-50 p-3 rounded-md text-sm overflow-auto ${isMobile ? 'max-h-[150px]' : 'max-h-[200px]'}`}>
+                  <pre className={`bg-slate-50 p-3 rounded-lg text-sm overflow-auto ${isMobile ? 'max-h-[150px]' : 'max-h-[200px]'}`}>
                     {outputDetails.stdout}
                   </pre>
                 </div>
@@ -73,7 +73,7 @@ const OutputDialog: React.FC<OutputDialogProps> = ({
               {outputDetails.stderr && (
                 <div>
                   <h3 className="text-sm font-medium mb-1">Standard Error:</h3>
-                  <pre className={`bg-red-50 p-3 rounded-md text-sm text-red-700 overflow-auto ${isMobile ? 'max-h-[150px]' : 'max-h-[200px]'}`}>
+                  <pre className={`bg-red-50 p-3 rounded-lg text-sm text-red-700 overflow-auto ${isMobile ? 'max-h-[150px]' : 'max-h-[200px]'}`}>
                     {outputDetails.stderr}
                   </pre>
                 </div>
@@ -82,7 +82,7 @@ const OutputDialog: React.FC<OutputDialogProps> = ({
               {outputDetails.compile_output && (
                 <div>
                   <h3 className="text-sm font-medium mb-1">Compilation Output:</h3>
-                  <pre className={`bg-amber-50 p-3 rounded-md text-sm text-amber-700 overflow-auto ${isMobile ? 'max-h-[150px]' : 'max-h-[200px]'}`}>
+                  <pre className={`bg-amber-50 p-3 rounded-lg text-sm text-amber-700 overflow-auto ${isMobile ? 'max-h-[150px]' : 'max-h-[200px]'}`}>
                     {outputDetails.compile_output}
                   </pre>
                 </div>

@@ -1,3 +1,4 @@
+
 import { io, Socket } from 'socket.io-client';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -24,8 +25,13 @@ const getClientId = (): string => {
 const createMockSocket = (): Socket => {
   console.log('Creating mock socket for offline mode');
   
-  // Keep track of clients and room data
-  const mockRooms: Record<string, {clients: Array<{socketId: string, username: string}>}> = {};
+  // Global shared state for mock collaboration simulation
+  // This static variable will hold room data across all mock socket instances
+  if (!(window as any).__mockRooms) {
+    (window as any).__mockRooms = {};
+  }
+  
+  const mockRooms = (window as any).__mockRooms;
   const mockSocketId = `mock-${uuidv4()}`;
   
   // Create a basic event emitter to simulate socket behavior
@@ -68,7 +74,7 @@ const createMockSocket = (): Socket => {
         
         // Check if user already exists in the room
         const existingClientIndex = mockRooms[roomId].clients.findIndex(
-          client => client.username === username
+          (client: any) => client.username === username
         );
         
         if (existingClientIndex >= 0) {
@@ -98,9 +104,20 @@ const createMockSocket = (): Socket => {
       
       // Echo code changes back in offline mode to simulate real-time collaboration
       if (event === 'code-change' && args[0]?.roomId && args[0]?.code) {
+        const roomId = args[0].roomId;
+        const code = args[0].code;
+        
+        // Store the latest code in the room
+        if (!mockRooms[roomId]) {
+          mockRooms[roomId] = { clients: [], latestCode: code };
+        } else {
+          mockRooms[roomId].latestCode = code;
+        }
+        
+        // Broadcast to all "clients" in this room by triggering code-change in all mockSocket instances
         setTimeout(() => {
           const codeChangeCallbacks = events['code-change'] || [];
-          codeChangeCallbacks.forEach(cb => cb({ code: args[0].code }));
+          codeChangeCallbacks.forEach(cb => cb({ code }));
         }, 50);
       }
       
