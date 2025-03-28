@@ -42,11 +42,6 @@ const getAllConnectedClients = (roomId: string) => {
   });
 };
 
-// Type definition for our mock socket to avoid TypeScript errors
-interface ExtendedSocket extends Socket {
-  mockRooms?: Set<string>;
-}
-
 // Enhanced mock socket to closely mirror the original server implementation
 const createMockSocket = (): Socket => {
   console.log('Creating mock socket for offline mode');
@@ -58,11 +53,10 @@ const createMockSocket = (): Socket => {
   // Create event system to simulate socket behavior
   const events: Record<string, Function[]> = {};
   
-  // First create a blank object for our mock socket
-  const mockSocketBase: any = {
+  // Create our mock socket object
+  const mockSocket: any = {
     id: mockSocketId,
     connected: true,
-    mockRooms, // Store rooms in a separate property to avoid TypeScript errors
     
     on: function(event: string, callback: Function) {
       console.log(`Mock socket: Registered listener for "${event}"`);
@@ -94,13 +88,11 @@ const createMockSocket = (): Socket => {
         mockData.userSocketMap[mockSocketId] = username;
         
         // Add socket to room
-        mockRooms.add(roomId);
-        
-        // Initialize room if it doesn't exist
         if (!mockData.rooms[roomId]) {
           mockData.rooms[roomId] = new Set();
         }
         mockData.rooms[roomId].add(mockSocketId);
+        mockRooms.add(roomId);
         
         // Get all clients in room
         const clients = getAllConnectedClients(roomId);
@@ -143,6 +135,17 @@ const createMockSocket = (): Socket => {
         setTimeout(() => {
           const codeChangeCallbacks = events[ACTIONS.CODE_CHANGE] || [];
           codeChangeCallbacks.forEach(cb => cb({ code }));
+        }, 50);
+      }
+      
+      // Handle SYNC_CODE event with just roomId
+      if (event === ACTIONS.SYNC_CODE && args[0]?.roomId) {
+        console.log("Mock socket: SYNC_CODE request received for room", args[0].roomId);
+        // In a real server, this would fetch the code for the room and send it back
+        // For mock, we'll just simulate an empty response
+        setTimeout(() => {
+          const codeChangeCallbacks = events[ACTIONS.CODE_CHANGE] || [];
+          codeChangeCallbacks.forEach(cb => cb({ code: "" }));
         }, 50);
       }
       
@@ -222,33 +225,33 @@ const createMockSocket = (): Socket => {
       
       // Clear all event listeners
       Object.keys(events).forEach(event => delete events[event]);
-    },
-    
-    // Required socket.io methods
-    io: null,
-    nsp: '',
-    connect: function() { return this; },
-    volatile: {},
-    timeout: function() { return this; },
-    send: function() { return this; },
-    binary: function() { return this; },
-    compress: function() { return this; },
-    emitWithAck: function() { return Promise.resolve(); },
-    listeners: function() { return []; },
-    hasListeners: function() { return false; },
-    onAny: function() { return this; },
-    prependAny: function() { return this; },
-    offAny: function() { return this; },
-    listenersAny: function() { return []; },
-    eventNames: function() { return []; },
-    decorate: function() { return this; }
+    }
   };
   
+  // Add all the remaining required methods from Socket interface
+  mockSocket.io = null;
+  mockSocket.nsp = '';
+  mockSocket.connect = function() { return this; };
+  mockSocket.volatile = {};
+  mockSocket.timeout = function() { return this; };
+  mockSocket.send = function() { return this; };
+  mockSocket.binary = function() { return this; };
+  mockSocket.compress = function() { return this; };
+  mockSocket.emitWithAck = function() { return Promise.resolve(); };
+  mockSocket.listeners = function() { return []; };
+  mockSocket.hasListeners = function() { return false; };
+  mockSocket.onAny = function() { return this; };
+  mockSocket.prependAny = function() { return this; };
+  mockSocket.offAny = function() { return this; };
+  mockSocket.listenersAny = function() { return []; };
+  mockSocket.eventNames = function() { return []; };
+  mockSocket.decorate = function() { return this; };
+  
   // Cast our mock socket to Socket type
-  return mockSocketBase as Socket;
+  return mockSocket as Socket;
 };
 
-// Socket initialization function
+// Socket initialization function - improved with better error handling
 export const initSocket = async (): Promise<Socket> => {
   // Disconnect existing socket
   if (socket) {
@@ -260,47 +263,51 @@ export const initSocket = async (): Promise<Socket> => {
   const clientId = getClientId();
   console.log(`Initializing socket with client ID: ${clientId}`);
   
+  // First try to create a real socket connection
   try {
-    // Attempt to connect to the real socket server
     console.log(`Connecting to socket server at ${SERVER_URL}`);
-    socket = io(SERVER_URL, {
-      transports: ['websocket'],
-      reconnection: true,
-      reconnectionAttempts: 5,
-      reconnectionDelay: 1000,
-      timeout: 10000,
-      forceNew: true,
-      query: { clientId }
-    });
     
-    return new Promise((resolve, reject) => {
-      const timeoutId = setTimeout(() => {
+    return new Promise((resolve) => {
+      // Create a timeout to fall back to mock socket
+      const connectionTimeout = setTimeout(() => {
         if (!socket?.connected) {
-          console.error('Socket connection timeout - falling back to mock socket');
+          console.log('Socket connection timeout - falling back to mock socket');
           socket = createMockSocket();
           resolve(socket);
         }
-      }, 5000);
+      }, 3000);
       
+      // Attempt to connect to real server
+      socket = io(SERVER_URL, {
+        transports: ['websocket'],
+        reconnection: true,
+        reconnectionAttempts: 3,
+        reconnectionDelay: 1000,
+        timeout: 5000,
+        forceNew: true,
+        query: { clientId }
+      });
+      
+      // On successful connection
       socket.on('connect', () => {
         console.log('Socket connected successfully with ID:', socket?.id);
-        clearTimeout(timeoutId);
+        clearTimeout(connectionTimeout);
         resolve(socket as Socket);
       });
       
+      // On connection error
       socket.on('connect_error', (err) => {
         console.error('Socket connection error:', err);
-        clearTimeout(timeoutId);
+        clearTimeout(connectionTimeout);
         
-        console.log('Socket error, falling back to mock socket implementation');
+        console.log('Socket error, using mock socket implementation');
         socket = createMockSocket();
         resolve(socket);
       });
     });
   } catch (err) {
     console.error('Socket initialization error:', err);
-    
-    console.log('Falling back to mock socket implementation');
+    console.log('Using mock socket implementation due to error');
     socket = createMockSocket();
     return socket;
   }
