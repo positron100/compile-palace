@@ -74,6 +74,12 @@ const Editor: React.FC<EditorProps> = ({ socketRef, roomId, onCodeChange, langua
         const initialCode = editorRef.current.getValue();
         previousCodeRef.current = initialCode;
         onCodeChange(initialCode);
+        
+        // When editor is first initialized, request sync
+        if (socketRef.current && roomId) {
+          console.log("New editor requesting initial code for room:", roomId);
+          socketRef.current.emit(ACTIONS.SYNC_CODE, { roomId });
+        }
       }
 
       // Handling code changes with specific approach to prevent cursor jumping
@@ -122,63 +128,68 @@ const Editor: React.FC<EditorProps> = ({ socketRef, roomId, onCodeChange, langua
     }
   }, [language]);
 
-  // Request initial code when joining a room
-  useEffect(() => {
-    if (socketRef.current && roomId) {
-      console.log("Requesting initial code for room:", roomId);
-      socketRef.current.emit(ACTIONS.SYNC_CODE, { roomId });
-    }
-  }, [socketRef.current, roomId]);
-
   // Socket event listener for remote code changes
   useEffect(() => {
     if (!socketRef.current) return;
     
     const handleRemoteChange = ({ code }: { code: string }) => {
-      if (!editorRef.current || !code || code === previousCodeRef.current) {
-        return; // Ignore if no change or same as current code
+      if (!editorRef.current || !code) {
+        return; // Ignore if editor not ready or no code
       }
       
-      console.log("Received remote code change");
+      // Skip if the code is exactly the same (prevents unnecessary updates)
+      if (code === previousCodeRef.current) {
+        console.log("Skipping identical remote code update");
+        return;
+      }
       
-      // Save cursor position
+      console.log("Received remote code change - applying to editor");
+      
+      // Save cursor position and scroll state
       const cursor = editorRef.current.getCursor();
       const scrollInfo = editorRef.current.getScrollInfo();
       
       // Set flag to ignore the change event this will trigger
       ignoreChangeRef.current = true;
       
-      // Update the editor value
-      editorRef.current.setValue(code);
-      
-      // Restore cursor position and scroll
-      editorRef.current.setCursor(cursor);
-      editorRef.current.scrollTo(scrollInfo.left, scrollInfo.top);
-      
-      // Update the previous code ref
-      previousCodeRef.current = code;
-      
-      // Reset flag after a short delay
-      setTimeout(() => {
-        ignoreChangeRef.current = false;
-      }, 0);
-      
-      // Update parent component
-      onCodeChange(code);
+      try {
+        // Update the editor value
+        editorRef.current.setValue(code);
+        
+        // Update the previous code ref
+        previousCodeRef.current = code;
+        
+        // Notify parent component
+        onCodeChange(code);
+      } catch (err) {
+        console.error("Error applying remote code change:", err);
+      } finally {
+        // Restore cursor position and scroll state
+        editorRef.current.setCursor(cursor);
+        editorRef.current.scrollTo(scrollInfo.left, scrollInfo.top);
+        
+        // Reset ignore flag after a short delay 
+        // (allows the change to be processed before accepting new changes)
+        setTimeout(() => {
+          ignoreChangeRef.current = false;
+        }, 10);
+      }
     };
     
-    // Register event handlers
+    // Listen for code change events
+    console.log("Setting up CODE_CHANGE and SYNC_CODE event listeners");
     socketRef.current.on(ACTIONS.CODE_CHANGE, handleRemoteChange);
     socketRef.current.on(ACTIONS.SYNC_CODE, handleRemoteChange);
     
     // Cleanup
     return () => {
+      console.log("Cleaning up editor socket listeners");
       if (socketRef.current) {
         socketRef.current.off(ACTIONS.CODE_CHANGE, handleRemoteChange);
         socketRef.current.off(ACTIONS.SYNC_CODE, handleRemoteChange);
       }
     };
-  }, [socketRef.current, onCodeChange]); // Make sure onCodeChange is in dependency array
+  }, [socketRef.current, onCodeChange]);
   
   return <textarea id="realtimeEditor"></textarea>;
 };

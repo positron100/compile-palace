@@ -85,7 +85,7 @@ function EditorPage() {
       
       console.log("Socket connected, joining room:", roomId);
       
-      // Join room with clear username - ensure username is set
+      // Ensure we have a username - default to Anonymous if not provided
       const username = location.state?.username || "Anonymous";
       console.log("Joining as:", username);
       
@@ -114,6 +114,13 @@ function EditorPage() {
           console.error("Clients is not an array:", clients);
           // Set empty array if clients is not an array
           setClients([]);
+        }
+        
+        // If more than one client is in the room and we just joined,
+        // request the latest code state
+        if (Array.isArray(clients) && clients.length > 1 && !initialized) {
+          console.log("Multiple users in room, requesting code sync");
+          socketRef.current.emit(ACTIONS.SYNC_CODE, { roomId });
         }
       });
       
@@ -173,10 +180,15 @@ function EditorPage() {
     };
   }, [initSocketConnection, roomId]);
   
-  // If username is not found and we've tried to initialize, redirect back to home page
-  if (!location.state?.username && initialized) {
-    return <Navigate to="/" />;
-  }
+  // Check if we need to redirect to home because of missing username
+  useEffect(() => {
+    // If initialized but no username provided, redirect to home
+    if (initialized && !location.state?.username) {
+      console.log("No username provided, redirecting to home");
+      toast.error("Please enter a username to join a room");
+      reactNavigator("/");
+    }
+  }, [initialized, location.state?.username, reactNavigator]);
 
   // Copy room ID to clipboard
   async function copyRoomId() {
@@ -263,6 +275,11 @@ function EditorPage() {
       </div>
     </>
   );
+
+  // If username is not found and we've tried to initialize, redirect back to home page
+  if (!location.state?.username && initialized) {
+    return <Navigate to="/" />;
+  }
 
   return (
     <div className="min-h-screen bg-white text-gray-800 flex flex-col md:flex-row">

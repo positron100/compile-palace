@@ -97,12 +97,16 @@ const createMockSocket = (): Socket => {
       if (event === ACTIONS.JOIN && args[0]?.roomId && args[0]?.username) {
         const { roomId, username } = args[0];
         
+        // Validate username and set a default if needed
+        const validUsername = username || 'Anonymous';
+        
         // Add user to socket map (like userSocketMap on server)
-        mockData.userSocketMap[mockSocketId] = username;
+        mockData.userSocketMap[mockSocketId] = validUsername;
         
         // Add socket to room
         if (!mockData.rooms[roomId]) {
           mockData.rooms[roomId] = new Set();
+          console.log(`Created new room: ${roomId}`);
         }
         mockData.rooms[roomId].add(mockSocketId);
         mockRooms.add(roomId);
@@ -114,14 +118,22 @@ const createMockSocket = (): Socket => {
         // Broadcast JOINED event to all clients in room (including self)
         setTimeout(() => {
           // First broadcast to others that a new user joined
-          broadcastToRoom(roomId, ACTIONS.JOINED, {
+          const joinedData = {
             clients,
-            username,
+            username: validUsername,
             socketId: mockSocketId
-          }, false); // Include self in this broadcast
+          };
+          console.log("Broadcasting JOINED event with data:", joinedData);
+          
+          // Broadcast to everyone in the room including self
+          Array.from(mockData.rooms[roomId]).forEach((socketId: string) => {
+            const callbacks = events[ACTIONS.JOINED] || [];
+            callbacks.forEach(cb => setTimeout(() => cb(joinedData), 10));
+          });
           
           // Send current code to the new joiner if available
           if (mockData.roomCodeMap[roomId]) {
+            console.log(`Sending current code for room ${roomId} to new user`);
             const syncCallbacks = events[ACTIONS.SYNC_CODE] || [];
             syncCallbacks.forEach(cb => setTimeout(() => {
               cb({ code: mockData.roomCodeMap[roomId] });
@@ -151,6 +163,7 @@ const createMockSocket = (): Socket => {
         // Send the stored code for this room if available
         setTimeout(() => {
           const code = mockData.roomCodeMap[roomId] || "";
+          console.log(`Sending code for room ${roomId}: ${code.substring(0, 20)}...`);
           const syncCallbacks = events[ACTIONS.SYNC_CODE] || [];
           syncCallbacks.forEach(cb => cb({ code }));
         }, 30);
@@ -189,7 +202,7 @@ const createMockSocket = (): Socket => {
         if (mockData.rooms[roomId]) {
           const username = mockData.userSocketMap[mockSocketId] || 'Anonymous';
           
-          // Remove this socket from the room first
+          // Remove this socket from the room first 
           mockData.rooms[roomId].delete(mockSocketId);
           
           // Then broadcast the disconnection to remaining users
