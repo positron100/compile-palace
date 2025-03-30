@@ -254,7 +254,7 @@ const createMockSocket = (): Socket => {
   return extendedMockSocket as unknown as Socket;
 };
 
-// Socket initialization function - improved with better error handling
+// Socket initialization function - improved with better error handling and feedback
 export const initSocket = async (): Promise<Socket> => {
   // Disconnect existing socket
   if (socket) {
@@ -265,6 +265,13 @@ export const initSocket = async (): Promise<Socket> => {
   
   const clientId = getClientId();
   console.log(`Initializing socket with client ID: ${clientId}`);
+  
+  // If localStorage has debug flag set, use mock socket immediately
+  if (localStorage.getItem('forceMockSocket') === 'true') {
+    console.log('Force mock socket mode is enabled via localStorage');
+    socket = createMockSocket();
+    return socket;
+  }
   
   // First try to create a real socket connection
   try {
@@ -278,15 +285,15 @@ export const initSocket = async (): Promise<Socket> => {
           socket = createMockSocket();
           resolve(socket);
         }
-      }, 800); // Shorter timeout for faster fallback
+      }, 1000); // Increased timeout for more reliable connections
       
       // Attempt to connect to real server
       socket = io(SERVER_URL, {
-        transports: ['websocket'],
+        transports: ['websocket', 'polling'], // Try WebSocket first, then polling
         reconnection: true,
         reconnectionAttempts: 3,
         reconnectionDelay: 500,
-        timeout: 1000, // Shortened timeout
+        timeout: 2000, // Increased timeout
         forceNew: true,
         query: { clientId }
       });
@@ -313,6 +320,17 @@ export const initSocket = async (): Promise<Socket> => {
     console.log('Using mock socket implementation due to error');
     socket = createMockSocket();
     return socket;
+  }
+};
+
+// Debug helper: Force mock socket mode
+export const forceMockSocket = (enable: boolean = true) => {
+  if (enable) {
+    localStorage.setItem('forceMockSocket', 'true');
+    console.log('Mock socket mode forced ON. Reload the page to apply.');
+  } else {
+    localStorage.removeItem('forceMockSocket');
+    console.log('Mock socket mode forced OFF. Reload the page to apply.');
   }
 };
 
