@@ -13,7 +13,6 @@ import "codemirror/addon/edit/closetag";
 import "codemirror/lib/codemirror.css";
 import "codemirror/theme/dracula.css";
 import ACTIONS from "../Actions";
-import { toast } from "sonner";
 
 interface EditorProps {
   socketRef: React.MutableRefObject<any>;
@@ -29,7 +28,6 @@ const Editor: React.FC<EditorProps> = ({ socketRef, roomId, onCodeChange, langua
   const editorRef = useRef<Codemirror.Editor | null>(null);
   const ignoreChangeRef = useRef<boolean>(false);
   const previousCodeRef = useRef<string>("");
-  const socketInitializedRef = useRef<boolean>(false);
   
   // Set the appropriate mode based on the selected language
   const getModeForLanguage = (langId: number) => {
@@ -45,15 +43,6 @@ const Editor: React.FC<EditorProps> = ({ socketRef, roomId, onCodeChange, langua
       default: return { name: "javascript", json: true };
     }
   };
-
-  // Request initial code when joining a room
-  useEffect(() => {
-    if (socketRef.current && roomId && !socketInitializedRef.current) {
-      console.log("Requesting initial code for room:", roomId);
-      socketRef.current.emit(ACTIONS.SYNC_CODE, { roomId });
-      socketInitializedRef.current = true;
-    }
-  }, [socketRef.current, roomId]);
 
   // Initializing code editor
   useEffect(() => {
@@ -99,7 +88,7 @@ const Editor: React.FC<EditorProps> = ({ socketRef, roomId, onCodeChange, langua
           
           // Emit to other users if connected
           if (socketRef.current) {
-            console.log("Emitting local code change", roomId);
+            console.log("Emitting code change to room:", roomId);
             socketRef.current.emit(ACTIONS.CODE_CHANGE, {
               roomId,
               code,
@@ -117,9 +106,6 @@ const Editor: React.FC<EditorProps> = ({ socketRef, roomId, onCodeChange, langua
         editorRef.current.toTextArea();
         editorRef.current = null;
       }
-      
-      // Clear socket initialization flag
-      socketInitializedRef.current = false;
     };
   }, []); // Empty dependency array to run once
 
@@ -129,6 +115,14 @@ const Editor: React.FC<EditorProps> = ({ socketRef, roomId, onCodeChange, langua
       editorRef.current.setOption("mode", getModeForLanguage(language.id));
     }
   }, [language]);
+
+  // Request initial code when joining a room
+  useEffect(() => {
+    if (socketRef.current && roomId) {
+      console.log("Requesting initial code for room:", roomId);
+      socketRef.current.emit(ACTIONS.SYNC_CODE, { roomId });
+    }
+  }, [socketRef.current, roomId]);
 
   // Socket event listener for remote code changes
   useEffect(() => {
