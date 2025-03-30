@@ -2,6 +2,7 @@
 import React from 'react';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { Button } from './ui/button';
+import { Maximize2, Minimize2 } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -36,35 +37,57 @@ const OutputDialog: React.FC<OutputDialogProps> = ({
   outputDetails,
 }) => {
   const isMobile = useIsMobile();
+  const [expanded, setExpanded] = React.useState(false);
+  
+  const toggleExpand = () => {
+    setExpanded(!expanded);
+  };
+  
+  // Calculate dynamic heights based on expansion state and device
+  const getPreHeight = () => {
+    if (expanded) return 'max-h-[60vh]';
+    if (isMobile) return 'max-h-[120px]';
+    return 'max-h-[200px]';
+  };
   
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className={`
-        ${isMobile ? 'w-[90vw] p-4' : 'sm:max-w-[600px] px-6 py-5'} 
-        max-h-[80vh] overflow-auto rounded-xl shadow-lg border border-purple-100
+        ${isMobile ? 'w-[95vw] p-3' : 'sm:max-w-[600px] px-6 py-5'} 
+        max-h-[85vh] overflow-auto rounded-xl shadow-lg border border-purple-100
+        transition-all duration-300
       `}>
-        <DialogHeader>
-          <DialogTitle className="flex justify-between items-center">
-            <span>Execution Results</span>
-          </DialogTitle>
-          <DialogDescription>
-            {outputDetails?.status && (
-              <div className={`inline-flex px-2.5 py-1 rounded-full text-xs font-medium ${
-                outputDetails.status.id === 3 ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
-              }`}>
-                {outputDetails.status.description || "Unknown"}
-              </div>
-            )}
-          </DialogDescription>
+        <DialogHeader className="flex-row justify-between items-center space-y-0 gap-2">
+          <div>
+            <DialogTitle className="text-lg">Execution Results</DialogTitle>
+            <DialogDescription>
+              {outputDetails?.status && (
+                <div className={`inline-flex px-2.5 py-1 rounded-full text-xs font-medium ${
+                  outputDetails.status.id === 3 ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+                }`}>
+                  {outputDetails.status.description || "Unknown"}
+                </div>
+              )}
+            </DialogDescription>
+          </div>
+          
+          <Button 
+            variant="ghost" 
+            size="icon" 
+            onClick={toggleExpand} 
+            className="h-8 w-8"
+          >
+            {expanded ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
+          </Button>
         </DialogHeader>
         
-        <div className="space-y-4">
+        <div className="space-y-4 mt-1">
           {outputDetails ? (
             <>
               {outputDetails.stdout && (
                 <div>
                   <h3 className="text-sm font-medium mb-1">Standard Output:</h3>
-                  <pre className={`bg-slate-50 p-3 rounded-lg text-sm overflow-auto ${isMobile ? 'max-h-[150px]' : 'max-h-[200px]'}`}>
+                  <pre className={`bg-slate-50 p-3 rounded-lg text-sm overflow-auto ${getPreHeight()}`}>
                     {outputDetails.stdout}
                   </pre>
                 </div>
@@ -73,7 +96,7 @@ const OutputDialog: React.FC<OutputDialogProps> = ({
               {outputDetails.stderr && (
                 <div>
                   <h3 className="text-sm font-medium mb-1">Standard Error:</h3>
-                  <pre className={`bg-red-50 p-3 rounded-lg text-sm text-red-700 overflow-auto ${isMobile ? 'max-h-[150px]' : 'max-h-[200px]'}`}>
+                  <pre className={`bg-red-50 p-3 rounded-lg text-sm text-red-700 overflow-auto ${getPreHeight()}`}>
                     {outputDetails.stderr}
                   </pre>
                 </div>
@@ -82,7 +105,7 @@ const OutputDialog: React.FC<OutputDialogProps> = ({
               {outputDetails.compile_output && (
                 <div>
                   <h3 className="text-sm font-medium mb-1">Compilation Output:</h3>
-                  <pre className={`bg-amber-50 p-3 rounded-lg text-sm text-amber-700 overflow-auto ${isMobile ? 'max-h-[150px]' : 'max-h-[200px]'}`}>
+                  <pre className={`bg-amber-50 p-3 rounded-lg text-sm text-amber-700 overflow-auto ${getPreHeight()}`}>
                     {outputDetails.compile_output}
                   </pre>
                 </div>

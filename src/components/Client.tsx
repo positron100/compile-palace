@@ -56,17 +56,20 @@ const Client: React.FC<ClientProps> = ({ username, socketId }) => {
       <div className="flex flex-col items-center gap-1 my-1 px-1" key={socketId}>
         <Tooltip>
           <TooltipTrigger asChild>
-            <Avatar className={`${isMobile ? 'h-9 w-9' : 'h-11 w-11'} border-2 border-white shadow-sm hover:scale-110 transition-transform cursor-pointer`}>
+            <Avatar className={`${isMobile ? 'h-10 w-10' : 'h-12 w-12'} border-2 border-white shadow-sm hover:scale-110 transition-transform cursor-pointer`}>
               <AvatarFallback className={`${avatarColor} text-white text-sm font-semibold rounded-full`}>
                 {initials}
               </AvatarFallback>
             </Avatar>
           </TooltipTrigger>
           <TooltipContent side={isMobile ? "bottom" : "right"} className="rounded-lg bg-white border border-purple-100 shadow-lg">
-            {username || 'User'}
+            <div className="px-1 py-0.5">
+              <div className="font-semibold">{username || 'User'}</div>
+              <div className="text-xs text-gray-500">Connected</div>
+            </div>
           </TooltipContent>
         </Tooltip>
-        <span className={`text-xs text-purple-700 font-medium truncate ${isMobile ? 'max-w-[55px]' : 'max-w-[70px] md:max-w-[80px]'}`}>
+        <span className={`text-xs text-purple-700 font-medium truncate ${isMobile ? 'max-w-[60px]' : 'max-w-[70px] md:max-w-[80px]'}`}>
           {username || 'User'}
         </span>
       </div>

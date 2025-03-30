@@ -99,7 +99,7 @@ const Editor: React.FC<EditorProps> = ({ socketRef, roomId, onCodeChange, langua
           
           // Emit to other users if connected
           if (socketRef.current) {
-            console.log("Emitting local code change");
+            console.log("Emitting local code change", roomId);
             socketRef.current.emit(ACTIONS.CODE_CHANGE, {
               roomId,
               code,
@@ -178,7 +178,7 @@ const Editor: React.FC<EditorProps> = ({ socketRef, roomId, onCodeChange, langua
         socketRef.current.off(ACTIONS.SYNC_CODE, handleRemoteChange);
       }
     };
-  }, [socketRef.current]); // Only re-run if socket reference changes
+  }, [socketRef.current, onCodeChange]); // Add onCodeChange to dependency array
 
   return <textarea id="realtimeEditor"></textarea>;
 };
