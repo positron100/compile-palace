@@ -28,6 +28,12 @@ const Editor: React.FC<EditorProps> = ({ socketRef, roomId, onCodeChange, langua
   const editorRef = useRef<Codemirror.Editor | null>(null);
   const ignoreChangeRef = useRef<boolean>(false);
   const previousCodeRef = useRef<string>("");
+  const roomIdRef = useRef<string>(roomId);
+  
+  // Update roomId ref when prop changes
+  useEffect(() => {
+    roomIdRef.current = roomId;
+  }, [roomId]);
   
   // Set the appropriate mode based on the selected language
   const getModeForLanguage = (langId: number) => {
@@ -88,9 +94,9 @@ const Editor: React.FC<EditorProps> = ({ socketRef, roomId, onCodeChange, langua
           
           // Emit to other users if connected
           if (socketRef.current) {
-            console.log("Emitting code change to room:", roomId);
+            console.log("Emitting code change to room:", roomIdRef.current);
             socketRef.current.emit(ACTIONS.CODE_CHANGE, {
-              roomId,
+              roomId: roomIdRef.current,
               code,
             });
           }
@@ -172,8 +178,8 @@ const Editor: React.FC<EditorProps> = ({ socketRef, roomId, onCodeChange, langua
         socketRef.current.off(ACTIONS.SYNC_CODE, handleRemoteChange);
       }
     };
-  }, [socketRef.current, onCodeChange]); // Add onCodeChange to dependency array
-
+  }, [socketRef.current, onCodeChange]); // Make sure onCodeChange is in dependency array
+  
   return <textarea id="realtimeEditor"></textarea>;
 };
 

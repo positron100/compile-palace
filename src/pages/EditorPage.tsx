@@ -1,3 +1,4 @@
+
 import React, { useEffect, useRef, useState, useCallback } from "react";
 import Client from "../components/Client";
 import Editor from "../components/Editor";
@@ -12,7 +13,7 @@ import {
 import ACTIONS from "../Actions";
 import { toast } from "sonner";
 import { submitCode, languageOptions } from "../services/compileService";
-import { Play, Copy, LogOut, WifiOff, Users, X } from "lucide-react";
+import { Play, Copy, LogOut, WifiOff, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -21,7 +22,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
+import { Sheet, SheetContent } from "@/components/ui/sheet";
 
 function EditorPage() {
   // socket initialization
@@ -84,14 +85,17 @@ function EditorPage() {
       
       console.log("Socket connected, joining room:", roomId);
       
-      // Join room with clear username
+      // Join room with clear username - ensure username is set
       const username = location.state?.username || "Anonymous";
       console.log("Joining as:", username);
       
-      socketRef.current.emit(ACTIONS.JOIN, {
-        roomId,
-        username,
-      });
+      // Join the room explicitly
+      if (roomId) {
+        socketRef.current.emit(ACTIONS.JOIN, {
+          roomId,
+          username,
+        });
+      }
       
       // Listen for joined event - make this more robust
       socketRef.current.on(ACTIONS.JOINED, ({ clients, username, socketId }) => {
@@ -140,7 +144,7 @@ function EditorPage() {
         setClients([{ socketId: 'local-user', username }]);
       }
     }
-  }, [location.state?.username, roomId, initialized]);
+  }, [location.state?.username, roomId]);
 
   // Set up socket connection on component mount
   useEffect(() => {
@@ -149,17 +153,25 @@ function EditorPage() {
       initSocketConnection();
     }
     
-    // Cleanup function
+    // Cleanup function - crucial for proper disconnection
     return () => {
       if (socketRef.current) {
         console.log("Cleaning up socket connection");
         socketRef.current.off(ACTIONS.JOINED);
         socketRef.current.off(ACTIONS.DISCONNECTED);
+        socketRef.current.off(ACTIONS.CODE_CHANGE);
+        socketRef.current.off(ACTIONS.SYNC_CODE);
+        
+        // Explicitly leave the room before disconnecting
+        if (roomId) {
+          socketRef.current.emit(ACTIONS.LEAVE, { roomId });
+        }
+        
         socketRef.current.disconnect();
         socketRef.current = null;
       }
     };
-  }, [initSocketConnection]);
+  }, [initSocketConnection, roomId]);
   
   // If username is not found and we've tried to initialize, redirect back to home page
   if (!location.state?.username && initialized) {
@@ -180,6 +192,10 @@ function EditorPage() {
   // Leave room and navigate to home
   async function leaveRoom() {
     if (socketRef.current) {
+      // Explicitly leave the room before disconnecting
+      if (roomId) {
+        socketRef.current.emit(ACTIONS.LEAVE, { roomId });
+      }
       socketRef.current.disconnect();
     }
     reactNavigator("/");

@@ -38,7 +38,7 @@ const getAllConnectedClients = (roomId: string) => {
   return Array.from(mockData.rooms[roomId] || []).map((socketId: string) => {
     return {
       socketId,
-      username: mockData.userSocketMap[socketId],
+      username: mockData.userSocketMap[socketId] || 'Anonymous',
     };
   });
 };
@@ -58,7 +58,7 @@ const createMockSocket = (): Socket => {
       Array.from(mockData.rooms[roomId]).forEach((socketId: string) => {
         if (!excludeSelf || socketId !== mockSocketId) { 
           const callbacks = events[event] || [];
-          callbacks.forEach(cb => cb(data));
+          callbacks.forEach(cb => setTimeout(() => cb(data), 10)); // Small delay to mimic network
         }
       });
     }
@@ -107,17 +107,27 @@ const createMockSocket = (): Socket => {
         mockData.rooms[roomId].add(mockSocketId);
         mockRooms.add(roomId);
         
-        // Get all clients in room
+        // Get all clients in room AFTER adding current user
         const clients = getAllConnectedClients(roomId);
+        console.log(`Room ${roomId} now has clients:`, clients);
         
         // Broadcast JOINED event to all clients in room (including self)
         setTimeout(() => {
+          // First broadcast to others that a new user joined
           broadcastToRoom(roomId, ACTIONS.JOINED, {
             clients,
             username,
             socketId: mockSocketId
-          }, false); // false means include self
-        }, 100);
+          }, false); // Include self in this broadcast
+          
+          // Send current code to the new joiner if available
+          if (mockData.roomCodeMap[roomId]) {
+            const syncCallbacks = events[ACTIONS.SYNC_CODE] || [];
+            syncCallbacks.forEach(cb => setTimeout(() => {
+              cb({ code: mockData.roomCodeMap[roomId] });
+            }, 50));
+          }
+        }, 50);
       }
       
       // Handle CODE_CHANGE event
@@ -130,7 +140,7 @@ const createMockSocket = (): Socket => {
         // Broadcast to all other clients in room
         setTimeout(() => {
           broadcastToRoom(roomId, ACTIONS.CODE_CHANGE, { code }, true);
-        }, 50);
+        }, 10);
       }
       
       // Handle SYNC_CODE event - This is called when a client wants the current code
@@ -143,7 +153,7 @@ const createMockSocket = (): Socket => {
           const code = mockData.roomCodeMap[roomId] || "";
           const syncCallbacks = events[ACTIONS.SYNC_CODE] || [];
           syncCallbacks.forEach(cb => cb({ code }));
-        }, 50);
+        }, 30);
       }
       
       return this;
@@ -177,15 +187,16 @@ const createMockSocket = (): Socket => {
       // Broadcast DISCONNECTED to all rooms this socket is in
       mockRooms.forEach((roomId) => {
         if (mockData.rooms[roomId]) {
-          const username = mockData.userSocketMap[mockSocketId];
+          const username = mockData.userSocketMap[mockSocketId] || 'Anonymous';
           
+          // Remove this socket from the room first
+          mockData.rooms[roomId].delete(mockSocketId);
+          
+          // Then broadcast the disconnection to remaining users
           broadcastToRoom(roomId, ACTIONS.DISCONNECTED, {
             socketId: mockSocketId,
             username
           }, true);
-          
-          // Remove this socket from the room
-          mockData.rooms[roomId].delete(mockSocketId);
           
           // Clean up empty rooms
           if (mockData.rooms[roomId].size === 0) {
@@ -254,7 +265,7 @@ export const initSocket = async (): Promise<Socket> => {
           socket = createMockSocket();
           resolve(socket);
         }
-      }, 1000); // Shorter timeout for faster fallback
+      }, 800); // Shorter timeout for faster fallback
       
       // Attempt to connect to real server
       socket = io(SERVER_URL, {
@@ -262,7 +273,7 @@ export const initSocket = async (): Promise<Socket> => {
         reconnection: true,
         reconnectionAttempts: 3,
         reconnectionDelay: 500,
-        timeout: 1500, // Shortened timeout
+        timeout: 1000, // Shortened timeout
         forceNew: true,
         query: { clientId }
       });
