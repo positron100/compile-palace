@@ -5,8 +5,8 @@ import Pusher from "pusher-js";
 const pusher = new Pusher("8ff9dd9dd0d8fd5a50a7", {
   cluster: "ap2",
   forceTLS: true,
-  enabledTransports: ["ws", "wss"],
-  disabledTransports: [],
+  enabledTransports: ["ws", "wss"], // Only use WebSocket protocols
+  disabledTransports: ["xhr_streaming", "xhr_polling", "sockjs"], // Disable polling to prevent CORS issues
   activityTimeout: 120000, // 2 minutes
   pongTimeout: 30000, // 30 seconds
   wsHost: undefined, // Use default Pusher host
@@ -15,6 +15,7 @@ const pusher = new Pusher("8ff9dd9dd0d8fd5a50a7", {
   httpHost: undefined, // Use default Pusher host
   httpPort: 80,
   httpsPort: 443,
+  authEndpoint: undefined, // Don't use auth endpoint to avoid CORS
 });
 
 // Enable debug logging in development mode

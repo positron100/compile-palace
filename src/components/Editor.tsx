@@ -91,7 +91,7 @@ const Editor: React.FC<EditorProps> = ({ socketRef, roomId, onCodeChange, langua
       editorRef.current.setCursor(cursor);
       editorRef.current.scrollTo(scrollInfo.left, scrollInfo.top);
       
-      // Reset ignore flag after a short delay 
+      // Reset ignore flag after a short delay
       setTimeout(() => {
         ignoreChangeRef.current = false;
       }, 10);
@@ -106,29 +106,51 @@ const Editor: React.FC<EditorProps> = ({ socketRef, roomId, onCodeChange, langua
     
     // Subscribe to the channel for this room
     const channelName = `collab-${roomId}`;
-    const newChannel = pusher.subscribe(channelName);
     
-    // Set up event handlers
-    newChannel.bind(ACTIONS.CODE_CHANGE, handleRemoteChange);
-    newChannel.bind(ACTIONS.SYNC_CODE, handleRemoteChange);
-    
-    // Request sync when first joining
-    console.log("New editor requesting initial code sync");
-    
-    // Use socketRef only if it's connected, otherwise skip
-    if (socketRef.current && socketRef.current.connected) {
-      socketRef.current.emit(ACTIONS.SYNC_CODE, { roomId });
+    try {
+      const newChannel = pusher.subscribe(channelName);
+      
+      // Set up event handlers
+      newChannel.bind(ACTIONS.CODE_CHANGE, handleRemoteChange);
+      newChannel.bind(ACTIONS.SYNC_CODE, handleRemoteChange);
+      
+      // Request sync when first joining - attempt to use mock socket if real socket fails
+      console.log("New editor requesting initial code sync");
+      if (socketRef.current && socketRef.current.connected) {
+        socketRef.current.emit(ACTIONS.SYNC_CODE, { roomId });
+      } else {
+        // When no socket available, broadcast a sync request via the channel
+        try {
+          newChannel.trigger(ACTIONS.SYNC_CODE, { roomId });
+          console.log("Triggered client-side sync request");
+        } catch (err) {
+          console.log("Unable to trigger client-side sync request", err);
+          
+          // Initialize with empty code
+          previousCodeRef.current = "";
+          if (editorRef.current) {
+            onCodeChange(editorRef.current.getValue());
+          }
+        }
+      }
+      
+      // Store channel reference
+      setChannel(newChannel);
+      
+      // Cleanup subscription when component unmounts or roomId changes
+      return () => {
+        console.log(`Unsubscribing from Pusher channel: ${channelName}`);
+        try {
+          newChannel.unbind_all();
+          pusher.unsubscribe(channelName);
+        } catch (err) {
+          console.error("Error unsubscribing from channel", err);
+        }
+      };
+    } catch (err) {
+      console.error("Error subscribing to Pusher channel", err);
+      return () => {};
     }
-    
-    // Store channel reference
-    setChannel(newChannel);
-    
-    // Cleanup subscription when component unmounts or roomId changes
-    return () => {
-      console.log(`Unsubscribing from Pusher channel: ${channelName}`);
-      newChannel.unbind_all();
-      pusher.unsubscribe(channelName);
-    };
   }, [roomId]);
 
   // Initializing code editor
@@ -178,7 +200,7 @@ const Editor: React.FC<EditorProps> = ({ socketRef, roomId, onCodeChange, langua
           if (now - lastEventTimestamp > THROTTLE_MS && roomIdRef.current) {
             setLastEventTimestamp(now);
             
-            // Emit via Pusher channel directly (client-side event)
+            // First try to emit via Pusher channel directly (client-side event)
             if (channel) {
               try {
                 channel.trigger(ACTIONS.CODE_CHANGE, { code });
@@ -192,6 +214,9 @@ const Editor: React.FC<EditorProps> = ({ socketRef, roomId, onCodeChange, langua
                     roomId: roomIdRef.current,
                     code
                   });
+                  console.log("Emitted code change via socket");
+                } else {
+                  console.log("No way to emit code change - local mode only");
                 }
               }
             }

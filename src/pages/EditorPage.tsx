@@ -80,86 +80,62 @@ function EditorPage() {
     
     const username = location.state?.username || "Anonymous";
     
-    // Use both presence channel and regular channel
-    const presenceChannelName = `presence-${roomId}`;
+    // Use regular channel for code collaboration
     const collabChannelName = `collab-${roomId}`;
     
     setConnectionStatus("Connecting to Pusher...");
     
     try {
-      // Subscribe to presence channel for user tracking
-      const presenceChannel = pusher.subscribe(presenceChannelName);
-      
-      // Also subscribe to regular channel for code updates
+      // Subscribe to regular channel for code updates
       const collabChannel = pusher.subscribe(collabChannelName);
       
-      // Handle presence subscription succeeded
-      presenceChannel.bind('pusher:subscription_succeeded', (members) => {
-        console.log("Pusher presence subscription succeeded", members);
+      // Handle successful connection
+      pusher.connection.bind('connected', () => {
+        console.log("Connected to Pusher");
         setSocketConnected(true);
         setSocketError(false);
         setConnectionStatus("Connected to Pusher");
         
-        // Join notification for the room
-        fetch("https://lovable-pusher-fyi9.onrender.com/pusher/user-joined", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            roomId,
-            username,
-            socketId: pusher.connection.socket_id
-          }),
-        }).catch(console.error);
-        
-        // Update clients list from members
-        const clientsArray = [];
-        members.each((member) => {
-          clientsArray.push({
-            socketId: member.id,
-            username: member.info.username
-          });
-        });
+        // Update local clients list for UI purposes (since we can't use presence channels without auth)
+        // This is a workaround for preview environments
+        const clientsArray = [
+          { socketId: 'local-user', username: username }
+        ];
         setClients(clientsArray);
-      });
-      
-      // Handle member added
-      presenceChannel.bind('pusher:member_added', (member) => {
-        console.log("Member added", member);
-        const username = member.info.username;
-        toast.success(`${username} joined the room`);
-        
-        setClients((prev) => {
-          // Check if client already exists
-          if (prev.some(client => client.socketId === member.id)) {
-            return prev;
-          }
-          return [...prev, { socketId: member.id, username }];
-        });
-      });
-      
-      // Handle member removed
-      presenceChannel.bind('pusher:member_removed', (member) => {
-        console.log("Member removed", member);
-        const username = member.info.username;
-        toast.success(`${username} left the room.`);
-        
-        setClients((prev) => {
-          return prev.filter((client) => client.socketId !== member.id);
-        });
       });
       
       // Handle subscription count events for the collab channel
       collabChannel.bind('pusher:subscription_count', (data) => {
         console.log("Subscription count updated:", data);
-        // This event provides the total subscriber count for better accuracy
-        // though we already track presence members directly
+        
+        // If there's subscription_count, we can use it to approximate users
+        if (data && data.subscription_count) {
+          // Create mock clients based on count
+          const mockClients = [];
+          
+          // Add current user
+          mockClients.push({ 
+            socketId: 'local-user', 
+            username: username 
+          });
+          
+          // Add other users (anonymous)
+          for (let i = 1; i < data.subscription_count; i++) {
+            mockClients.push({
+              socketId: `anonymous-${i}`,
+              username: `User ${i}`
+            });
+          }
+          
+          setClients(mockClients);
+        }
       });
       
       // Store channel references
-      setPusherChannel(presenceChannel);
+      setPusherChannel(collabChannel);
       setInitialized(true);
       
-      return presenceChannel;
+      return collabChannel;
     } catch (error) {
       console.error("Pusher initialization error:", error);
       setSocketError(true);
@@ -192,7 +168,7 @@ function EditorPage() {
       if (channel) {
         console.log("Cleaning up Pusher connection");
         channel.unbind_all();
-        pusher.unsubscribe(`presence-${roomId}`);
+        pusher.unsubscribe(`collab-${roomId}`);
       }
       
       if (socketRef.current) {
@@ -213,29 +189,6 @@ function EditorPage() {
     }
   }, [initialized, location.state?.username, reactNavigator]);
 
-  // Setup Pusher connection authentication - Hooks Pusher to authenticate/identify users
-  useEffect(() => {
-    const username = location.state?.username || "Anonymous";
-    
-    pusher.connection.bind('connected', () => {
-      console.log('Connected to Pusher');
-      // Set user data for presence channels
-      fetch("https://lovable-pusher-fyi9.onrender.com/pusher/auth", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          socket_id: pusher.connection.socket_id,
-          channel_name: `presence-${roomId}`,
-          username
-        }),
-      }).catch(console.error);
-    });
-    
-    return () => {
-      pusher.connection.unbind('connected');
-    };
-  }, [roomId, location.state?.username]);
-
   // Copy room ID to clipboard
   async function copyRoomId() {
     try {
@@ -252,7 +205,7 @@ function EditorPage() {
     if (pusherChannel) {
       // Unsubscribe from Pusher channel
       pusherChannel.unbind_all();
-      pusher.unsubscribe(`presence-${roomId}`);
+      pusher.unsubscribe(`collab-${roomId}`);
     }
     
     if (socketRef.current) {
