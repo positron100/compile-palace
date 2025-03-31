@@ -6,7 +6,8 @@ const ACTIONS = {
   CODE_CHANGE: 'code-change',
   SYNC_CODE: 'sync-code',
   LEAVE: 'leave',
-  DEBUG_INFO: 'debug-info', // New action for debugging information
+  DEBUG_INFO: 'debug-info',
+  PRESENCE_UPDATE: 'presence-update', // New action for Pusher presence
 };
 
 export default ACTIONS;

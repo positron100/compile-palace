@@ -1,5 +1,5 @@
 
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import Codemirror from "codemirror";
 import "codemirror/mode/javascript/javascript";
 import "codemirror/mode/python/python";
@@ -13,6 +13,7 @@ import "codemirror/addon/edit/closetag";
 import "codemirror/lib/codemirror.css";
 import "codemirror/theme/dracula.css";
 import ACTIONS from "../Actions";
+import pusher from "../pusher";
 
 interface EditorProps {
   socketRef: React.MutableRefObject<any>;
@@ -29,6 +30,7 @@ const Editor: React.FC<EditorProps> = ({ socketRef, roomId, onCodeChange, langua
   const ignoreChangeRef = useRef<boolean>(false);
   const previousCodeRef = useRef<string>("");
   const roomIdRef = useRef<string>(roomId);
+  const [channel, setChannel] = useState<any>(null);
   
   // Update roomId ref when prop changes
   useEffect(() => {
@@ -49,6 +51,82 @@ const Editor: React.FC<EditorProps> = ({ socketRef, roomId, onCodeChange, langua
       default: return { name: "javascript", json: true };
     }
   };
+
+  // Handle remote code changes from Pusher
+  const handleRemoteChange = (data: { code: string }) => {
+    if (!editorRef.current || !data.code) {
+      return; // Ignore if editor not ready or no code
+    }
+    
+    // Skip if the code is exactly the same (prevents unnecessary updates)
+    if (data.code === previousCodeRef.current) {
+      console.log("Skipping identical remote code update");
+      return;
+    }
+    
+    console.log("Received remote code change - applying to editor");
+    
+    // Save cursor position and scroll state
+    const cursor = editorRef.current.getCursor();
+    const scrollInfo = editorRef.current.getScrollInfo();
+    
+    // Set flag to ignore the change event this will trigger
+    ignoreChangeRef.current = true;
+    
+    try {
+      // Update the editor value
+      editorRef.current.setValue(data.code);
+      
+      // Update the previous code ref
+      previousCodeRef.current = data.code;
+      
+      // Notify parent component
+      onCodeChange(data.code);
+    } catch (err) {
+      console.error("Error applying remote code change:", err);
+    } finally {
+      // Restore cursor position and scroll state
+      editorRef.current.setCursor(cursor);
+      editorRef.current.scrollTo(scrollInfo.left, scrollInfo.top);
+      
+      // Reset ignore flag after a short delay 
+      // (allows the change to be processed before accepting new changes)
+      setTimeout(() => {
+        ignoreChangeRef.current = false;
+      }, 10);
+    }
+  };
+
+  // Subscribe to Pusher channel for the room
+  useEffect(() => {
+    if (!roomId) return;
+    
+    console.log(`Subscribing to Pusher channel for room: ${roomId}`);
+    
+    // Subscribe to the channel for this room
+    const channelName = `collab-${roomId}`;
+    const newChannel = pusher.subscribe(channelName);
+    
+    // Set up event handlers
+    newChannel.bind(ACTIONS.CODE_CHANGE, handleRemoteChange);
+    newChannel.bind(ACTIONS.SYNC_CODE, handleRemoteChange);
+    
+    // Request sync when first joining
+    console.log("New editor requesting initial code sync");
+    if (socketRef.current) {
+      socketRef.current.emit(ACTIONS.SYNC_CODE, { roomId });
+    }
+    
+    // Store channel reference
+    setChannel(newChannel);
+    
+    // Cleanup subscription when component unmounts or roomId changes
+    return () => {
+      console.log(`Unsubscribing from Pusher channel: ${channelName}`);
+      newChannel.unbind_all();
+      pusher.unsubscribe(channelName);
+    };
+  }, [roomId]);
 
   // Initializing code editor
   useEffect(() => {
@@ -74,12 +152,6 @@ const Editor: React.FC<EditorProps> = ({ socketRef, roomId, onCodeChange, langua
         const initialCode = editorRef.current.getValue();
         previousCodeRef.current = initialCode;
         onCodeChange(initialCode);
-        
-        // When editor is first initialized, request sync
-        if (socketRef.current && roomId) {
-          console.log("New editor requesting initial code for room:", roomId);
-          socketRef.current.emit(ACTIONS.SYNC_CODE, { roomId });
-        }
       }
 
       // Handling code changes with specific approach to prevent cursor jumping
@@ -98,12 +170,17 @@ const Editor: React.FC<EditorProps> = ({ socketRef, roomId, onCodeChange, langua
           onCodeChange(code);
           previousCodeRef.current = code;
           
-          // Emit to other users if connected
-          if (socketRef.current) {
-            console.log("Emitting code change to room:", roomIdRef.current);
-            socketRef.current.emit(ACTIONS.CODE_CHANGE, {
-              roomId: roomIdRef.current,
-              code,
+          // Send update to Pusher backend
+          if (roomIdRef.current) {
+            fetch("https://lovable-pusher-fyi9.onrender.com/pusher/code-update", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                roomId: roomIdRef.current,
+                code
+              }),
+            }).catch(err => {
+              console.error("Error sending code update to Pusher backend:", err);
             });
           }
         }
@@ -127,69 +204,6 @@ const Editor: React.FC<EditorProps> = ({ socketRef, roomId, onCodeChange, langua
       editorRef.current.setOption("mode", getModeForLanguage(language.id));
     }
   }, [language]);
-
-  // Socket event listener for remote code changes
-  useEffect(() => {
-    if (!socketRef.current) return;
-    
-    const handleRemoteChange = ({ code }: { code: string }) => {
-      if (!editorRef.current || !code) {
-        return; // Ignore if editor not ready or no code
-      }
-      
-      // Skip if the code is exactly the same (prevents unnecessary updates)
-      if (code === previousCodeRef.current) {
-        console.log("Skipping identical remote code update");
-        return;
-      }
-      
-      console.log("Received remote code change - applying to editor");
-      
-      // Save cursor position and scroll state
-      const cursor = editorRef.current.getCursor();
-      const scrollInfo = editorRef.current.getScrollInfo();
-      
-      // Set flag to ignore the change event this will trigger
-      ignoreChangeRef.current = true;
-      
-      try {
-        // Update the editor value
-        editorRef.current.setValue(code);
-        
-        // Update the previous code ref
-        previousCodeRef.current = code;
-        
-        // Notify parent component
-        onCodeChange(code);
-      } catch (err) {
-        console.error("Error applying remote code change:", err);
-      } finally {
-        // Restore cursor position and scroll state
-        editorRef.current.setCursor(cursor);
-        editorRef.current.scrollTo(scrollInfo.left, scrollInfo.top);
-        
-        // Reset ignore flag after a short delay 
-        // (allows the change to be processed before accepting new changes)
-        setTimeout(() => {
-          ignoreChangeRef.current = false;
-        }, 10);
-      }
-    };
-    
-    // Listen for code change events
-    console.log("Setting up CODE_CHANGE and SYNC_CODE event listeners");
-    socketRef.current.on(ACTIONS.CODE_CHANGE, handleRemoteChange);
-    socketRef.current.on(ACTIONS.SYNC_CODE, handleRemoteChange);
-    
-    // Cleanup
-    return () => {
-      console.log("Cleaning up editor socket listeners");
-      if (socketRef.current) {
-        socketRef.current.off(ACTIONS.CODE_CHANGE, handleRemoteChange);
-        socketRef.current.off(ACTIONS.SYNC_CODE, handleRemoteChange);
-      }
-    };
-  }, [socketRef.current, onCodeChange]);
   
   return <textarea id="realtimeEditor"></textarea>;
 };

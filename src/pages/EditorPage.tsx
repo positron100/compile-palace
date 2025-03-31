@@ -1,9 +1,9 @@
-
 import React, { useEffect, useRef, useState, useCallback } from "react";
 import Client from "../components/Client";
 import Editor from "../components/Editor";
 import OutputDialog from "../components/OutputDialog";
 import { initSocket } from "../socket";
+import ConnectionStatus from "../components/ConnectionStatus";
 import {
   Navigate,
   useLocation,
@@ -23,6 +23,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
+import pusher from "../pusher";
 
 function EditorPage() {
   // socket initialization
@@ -49,6 +50,7 @@ function EditorPage() {
   
   // Connection status message for debugging
   const [connectionStatus, setConnectionStatus] = useState("Connecting...");
+  const [pusherChannel, setPusherChannel] = useState(null);
   
   // Function to handle compile button click
   const handleCompile = async () => {
@@ -72,113 +74,121 @@ function EditorPage() {
     }
   };
 
-  // Initialize socket connection and set up event listeners
-  const initSocketConnection = useCallback(async () => {
+  // Initialize Pusher connection
+  const initPusher = useCallback(() => {
+    if (!roomId) return;
+    
+    const username = location.state?.username || "Anonymous";
+    const channelName = `presence-${roomId}`;
+    
+    setConnectionStatus("Connecting to Pusher...");
+    
     try {
-      setConnectionStatus("Connecting to server...");
+      // Subscribe to presence channel
+      const channel = pusher.subscribe(channelName);
       
-      // Always attempt a fresh connection
-      socketRef.current = await initSocket();
-      setSocketConnected(true);
-      setSocketError(false);
-      setConnectionStatus("Connected to server");
-      
-      console.log("Socket connected, joining room:", roomId);
-      
-      // Ensure we have a username - default to Anonymous if not provided
-      const username = location.state?.username || "Anonymous";
-      console.log("Joining as:", username);
-      
-      // Join the room explicitly
-      if (roomId) {
-        socketRef.current.emit(ACTIONS.JOIN, {
-          roomId,
-          username,
+      // Handle presence subscription succeeded
+      channel.bind('pusher:subscription_succeeded', (members) => {
+        console.log("Pusher presence subscription succeeded", members);
+        setSocketConnected(true);
+        setSocketError(false);
+        setConnectionStatus("Connected to Pusher");
+        
+        // Join notification for the room
+        fetch("https://lovable-pusher-fyi9.onrender.com/pusher/user-joined", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            roomId,
+            username,
+            socketId: pusher.connection.socket_id
+          }),
+        }).catch(console.error);
+        
+        // Update clients list from members
+        const clientsArray = [];
+        members.each((member) => {
+          clientsArray.push({
+            socketId: member.id,
+            username: member.info.username
+          });
         });
-      }
-      
-      // Listen for joined event - make this more robust
-      socketRef.current.on(ACTIONS.JOINED, ({ clients, username, socketId }) => {
-        console.log("JOINED event received", { clients, username, socketId });
-        
-        // Only show notification for others joining
-        if (username !== location.state?.username && initialized) {
-          toast.success(`${username} joined the room`);
-        }
-        
-        // Update client list with the clients we received from server
-        if (Array.isArray(clients)) {
-          console.log("Setting clients:", clients);
-          setClients(clients);
-        } else {
-          console.error("Clients is not an array:", clients);
-          // Set empty array if clients is not an array
-          setClients([]);
-        }
-        
-        // If more than one client is in the room and we just joined,
-        // request the latest code state
-        if (Array.isArray(clients) && clients.length > 1 && !initialized) {
-          console.log("Multiple users in room, requesting code sync");
-          socketRef.current.emit(ACTIONS.SYNC_CODE, { roomId });
-        }
+        setClients(clientsArray);
       });
       
-      // Listen for disconnect event
-      socketRef.current.on(ACTIONS.DISCONNECTED, ({ socketId, username }) => {
-        console.log("DISCONNECTED event received", { socketId, username });
-        toast.success(`${username} left the room.`);
+      // Handle member added
+      channel.bind('pusher:member_added', (member) => {
+        console.log("Member added", member);
+        const username = member.info.username;
+        toast.success(`${username} joined the room`);
+        
         setClients((prev) => {
-          return prev.filter((client) => client.socketId !== socketId);
+          // Check if client already exists
+          if (prev.some(client => client.socketId === member.id)) {
+            return prev;
+          }
+          return [...prev, { socketId: member.id, username }];
         });
       });
       
+      // Handle member removed
+      channel.bind('pusher:member_removed', (member) => {
+        console.log("Member removed", member);
+        const username = member.info.username;
+        toast.success(`${username} left the room.`);
+        
+        setClients((prev) => {
+          return prev.filter((client) => client.socketId !== member.id);
+        });
+      });
+      
+      // Store channel reference
+      setPusherChannel(channel);
       setInitialized(true);
+      
+      return channel;
     } catch (error) {
-      console.error("Socket initialization failed:", error);
+      console.error("Pusher initialization error:", error);
       setSocketError(true);
-      setConnectionStatus("Connection failed, using local mode");
-      toast.error("Failed to connect to server, using local mode");
-      
-      // Still set initialized to true so UI renders
+      setConnectionStatus("Pusher connection failed");
       setInitialized(true);
+      toast.error("Failed to connect to Pusher, using local mode");
       
-      // If in local mode, create a fake client for UI demonstration
-      if (!socketRef.current) {
-        console.log("Creating mock client in local mode");
-        // Create a fake client just for the UI
-        const username = location.state?.username || "Anonymous";
-        setClients([{ socketId: 'local-user', username }]);
-      }
+      // Create a fake client for UI demonstration
+      const username = location.state?.username || "Anonymous";
+      setClients([{ socketId: 'local-user', username }]);
+      return null;
     }
-  }, [location.state?.username, roomId]);
+  }, [roomId, location.state?.username]);
 
   // Set up socket connection on component mount
   useEffect(() => {
+    // Initialize Socket.IO for backward compatibility
     if (!socketRef.current) {
       console.log("Initializing socket connection");
-      initSocketConnection();
+      initSocket().then(socket => {
+        socketRef.current = socket;
+      }).catch(console.error);
     }
     
-    // Cleanup function - crucial for proper disconnection
+    // Initialize Pusher
+    const channel = initPusher();
+    
+    // Cleanup function
     return () => {
+      if (channel) {
+        console.log("Cleaning up Pusher connection");
+        channel.unbind_all();
+        pusher.unsubscribe(`presence-${roomId}`);
+      }
+      
       if (socketRef.current) {
         console.log("Cleaning up socket connection");
-        socketRef.current.off(ACTIONS.JOINED);
-        socketRef.current.off(ACTIONS.DISCONNECTED);
-        socketRef.current.off(ACTIONS.CODE_CHANGE);
-        socketRef.current.off(ACTIONS.SYNC_CODE);
-        
-        // Explicitly leave the room before disconnecting
-        if (roomId) {
-          socketRef.current.emit(ACTIONS.LEAVE, { roomId });
-        }
-        
         socketRef.current.disconnect();
         socketRef.current = null;
       }
     };
-  }, [initSocketConnection, roomId]);
+  }, [initPusher, roomId]);
   
   // Check if we need to redirect to home because of missing username
   useEffect(() => {
@@ -189,6 +199,29 @@ function EditorPage() {
       reactNavigator("/");
     }
   }, [initialized, location.state?.username, reactNavigator]);
+
+  // Setup Pusher connection authentication - Hooks Pusher to authenticate/identify users
+  useEffect(() => {
+    const username = location.state?.username || "Anonymous";
+    
+    pusher.connection.bind('connected', () => {
+      console.log('Connected to Pusher');
+      // Set user data for presence channels
+      fetch("https://lovable-pusher-fyi9.onrender.com/pusher/auth", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          socket_id: pusher.connection.socket_id,
+          channel_name: `presence-${roomId}`,
+          username
+        }),
+      }).catch(console.error);
+    });
+    
+    return () => {
+      pusher.connection.unbind('connected');
+    };
+  }, [roomId, location.state?.username]);
 
   // Copy room ID to clipboard
   async function copyRoomId() {
@@ -203,13 +236,20 @@ function EditorPage() {
 
   // Leave room and navigate to home
   async function leaveRoom() {
+    if (pusherChannel) {
+      // Unsubscribe from Pusher channel
+      pusherChannel.unbind_all();
+      pusher.unsubscribe(`presence-${roomId}`);
+    }
+    
     if (socketRef.current) {
-      // Explicitly leave the room before disconnecting
+      // Also leave the Socket.IO room
       if (roomId) {
         socketRef.current.emit(ACTIONS.LEAVE, { roomId });
       }
       socketRef.current.disconnect();
     }
+    
     reactNavigator("/");
   }
 
@@ -221,19 +261,11 @@ function EditorPage() {
         <p className="text-sm text-purple-500">Real-time code collaboration</p>
         
         {/* Connection status indicator */}
-        <div className={`flex items-center gap-1 mt-2 text-xs ${socketError ? 'text-red-500' : 'text-green-600'}`}>
-          {socketError ? (
-            <>
-              <WifiOff size={14} />
-              <span>Using local mode</span>
-            </>
-          ) : (
-            <>
-              <div className={`w-2 h-2 rounded-full ${socketConnected ? 'bg-green-500' : 'bg-amber-500'}`}></div>
-              <span>{connectionStatus}</span>
-            </>
-          )}
-        </div>
+        <ConnectionStatus 
+          isConnected={socketConnected} 
+          isError={socketError}
+          statusMessage={connectionStatus}
+        />
       </div>
       
       <div className="mb-8">
