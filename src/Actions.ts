@@ -7,7 +7,8 @@ const ACTIONS = {
   SYNC_CODE: 'sync-code',
   LEAVE: 'leave',
   DEBUG_INFO: 'debug-info',
-  PRESENCE_UPDATE: 'presence-update', // New action for Pusher presence
+  PRESENCE_UPDATE: 'presence-update',
+  SUBSCRIPTION_COUNT: 'subscription-count' // New action for subscription count events
 };
 
 export default ACTIONS;

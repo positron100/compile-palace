@@ -79,16 +79,22 @@ function EditorPage() {
     if (!roomId) return;
     
     const username = location.state?.username || "Anonymous";
-    const channelName = `presence-${roomId}`;
+    
+    // Use both presence channel and regular channel
+    const presenceChannelName = `presence-${roomId}`;
+    const collabChannelName = `collab-${roomId}`;
     
     setConnectionStatus("Connecting to Pusher...");
     
     try {
-      // Subscribe to presence channel
-      const channel = pusher.subscribe(channelName);
+      // Subscribe to presence channel for user tracking
+      const presenceChannel = pusher.subscribe(presenceChannelName);
+      
+      // Also subscribe to regular channel for code updates
+      const collabChannel = pusher.subscribe(collabChannelName);
       
       // Handle presence subscription succeeded
-      channel.bind('pusher:subscription_succeeded', (members) => {
+      presenceChannel.bind('pusher:subscription_succeeded', (members) => {
         console.log("Pusher presence subscription succeeded", members);
         setSocketConnected(true);
         setSocketError(false);
@@ -117,7 +123,7 @@ function EditorPage() {
       });
       
       // Handle member added
-      channel.bind('pusher:member_added', (member) => {
+      presenceChannel.bind('pusher:member_added', (member) => {
         console.log("Member added", member);
         const username = member.info.username;
         toast.success(`${username} joined the room`);
@@ -132,7 +138,7 @@ function EditorPage() {
       });
       
       // Handle member removed
-      channel.bind('pusher:member_removed', (member) => {
+      presenceChannel.bind('pusher:member_removed', (member) => {
         console.log("Member removed", member);
         const username = member.info.username;
         toast.success(`${username} left the room.`);
@@ -142,11 +148,18 @@ function EditorPage() {
         });
       });
       
-      // Store channel reference
-      setPusherChannel(channel);
+      // Handle subscription count events for the collab channel
+      collabChannel.bind('pusher:subscription_count', (data) => {
+        console.log("Subscription count updated:", data);
+        // This event provides the total subscriber count for better accuracy
+        // though we already track presence members directly
+      });
+      
+      // Store channel references
+      setPusherChannel(presenceChannel);
       setInitialized(true);
       
-      return channel;
+      return presenceChannel;
     } catch (error) {
       console.error("Pusher initialization error:", error);
       setSocketError(true);

@@ -31,6 +31,8 @@ const Editor: React.FC<EditorProps> = ({ socketRef, roomId, onCodeChange, langua
   const previousCodeRef = useRef<string>("");
   const roomIdRef = useRef<string>(roomId);
   const [channel, setChannel] = useState<any>(null);
+  const [lastEventTimestamp, setLastEventTimestamp] = useState<number>(0);
+  const THROTTLE_MS = 100; // Throttle updates to reduce network traffic
   
   // Update roomId ref when prop changes
   useEffect(() => {
@@ -117,6 +119,18 @@ const Editor: React.FC<EditorProps> = ({ socketRef, roomId, onCodeChange, langua
       socketRef.current.emit(ACTIONS.SYNC_CODE, { roomId });
     }
     
+    // Also send a sync request via Pusher backend
+    fetch("https://lovable-pusher-fyi9.onrender.com/pusher/request-sync", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        roomId,
+        socketId: pusher.connection.socket_id
+      }),
+    }).catch(err => {
+      console.error("Error requesting code sync via Pusher:", err);
+    });
+    
     // Store channel reference
     setChannel(newChannel);
     
@@ -154,7 +168,7 @@ const Editor: React.FC<EditorProps> = ({ socketRef, roomId, onCodeChange, langua
         onCodeChange(initialCode);
       }
 
-      // Handling code changes with specific approach to prevent cursor jumping
+      // Handling code changes with throttling to reduce network traffic
       editorRef.current.on("change", (instance, changes) => {
         // Exit early if we should ignore this change (from remote update)
         if (ignoreChangeRef.current) {
@@ -170,14 +184,19 @@ const Editor: React.FC<EditorProps> = ({ socketRef, roomId, onCodeChange, langua
           onCodeChange(code);
           previousCodeRef.current = code;
           
-          // Send update to Pusher backend
-          if (roomIdRef.current) {
+          // Throttle updates to reduce network traffic
+          const now = Date.now();
+          if (now - lastEventTimestamp > THROTTLE_MS && roomIdRef.current) {
+            setLastEventTimestamp(now);
+            
+            // Send update to Pusher backend
             fetch("https://lovable-pusher-fyi9.onrender.com/pusher/code-update", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({
                 roomId: roomIdRef.current,
-                code
+                code,
+                socketId: pusher.connection.socket_id
               }),
             }).catch(err => {
               console.error("Error sending code update to Pusher backend:", err);
