@@ -6,7 +6,15 @@ const pusher = new Pusher("8ff9dd9dd0d8fd5a50a7", {
   cluster: "ap2",
   forceTLS: true,
   enabledTransports: ["ws", "wss"],
-  disabledTransports: []
+  disabledTransports: [],
+  activityTimeout: 120000, // 2 minutes
+  pongTimeout: 30000, // 30 seconds
+  wsHost: undefined, // Use default Pusher host
+  wsPort: 443,
+  wssPort: 443,
+  httpHost: undefined, // Use default Pusher host
+  httpPort: 80,
+  httpsPort: 443,
 });
 
 // Enable debug logging in development mode
@@ -33,6 +41,12 @@ pusher.connection.bind('failed', () => {
 
 pusher.connection.bind('disconnected', () => {
   console.log('Disconnected from Pusher');
+  
+  // Attempt reconnection after a short delay
+  setTimeout(() => {
+    console.log('Attempting to reconnect to Pusher...');
+    pusher.connect();
+  }, 3000);
 });
 
 pusher.connection.bind('error', (err) => {

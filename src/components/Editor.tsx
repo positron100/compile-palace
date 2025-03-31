@@ -92,7 +92,6 @@ const Editor: React.FC<EditorProps> = ({ socketRef, roomId, onCodeChange, langua
       editorRef.current.scrollTo(scrollInfo.left, scrollInfo.top);
       
       // Reset ignore flag after a short delay 
-      // (allows the change to be processed before accepting new changes)
       setTimeout(() => {
         ignoreChangeRef.current = false;
       }, 10);
@@ -115,7 +114,9 @@ const Editor: React.FC<EditorProps> = ({ socketRef, roomId, onCodeChange, langua
     
     // Request sync when first joining
     console.log("New editor requesting initial code sync");
-    if (socketRef.current) {
+    
+    // Use socketRef only if it's connected, otherwise skip
+    if (socketRef.current && socketRef.current.connected) {
       socketRef.current.emit(ACTIONS.SYNC_CODE, { roomId });
     }
     
@@ -177,20 +178,21 @@ const Editor: React.FC<EditorProps> = ({ socketRef, roomId, onCodeChange, langua
           if (now - lastEventTimestamp > THROTTLE_MS && roomIdRef.current) {
             setLastEventTimestamp(now);
             
-            // Emit change to socket for other clients
-            if (socketRef.current) {
-              socketRef.current.emit(ACTIONS.CODE_CHANGE, {
-                roomId: roomIdRef.current,
-                code
-              });
-            }
-            
-            // Also emit to Pusher channel directly
+            // Emit via Pusher channel directly (client-side event)
             if (channel) {
               try {
                 channel.trigger(ACTIONS.CODE_CHANGE, { code });
+                console.log("Triggered client-side code change event");
               } catch (err) {
-                console.log("Unable to trigger client-side event, but socket will handle it");
+                console.log("Unable to trigger client-side event, trying socket fallback");
+                
+                // Fallback to socket if available and connected
+                if (socketRef.current && socketRef.current.connected) {
+                  socketRef.current.emit(ACTIONS.CODE_CHANGE, {
+                    roomId: roomIdRef.current,
+                    code
+                  });
+                }
               }
             }
           }

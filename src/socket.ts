@@ -9,6 +9,9 @@ const SERVER_URL = import.meta.env.VITE_SERVER_URL || 'http://localhost:5000';
 // Global socket instance
 let socket: Socket | null = null;
 
+// Flag to indicate if we already tried to connect and failed
+let connectionAttempted = false;
+
 // Global mock data to replicate server behavior
 if (typeof window !== 'undefined') {
   if (!(window as any).__mockData) {
@@ -256,7 +259,20 @@ const createMockSocket = (): Socket => {
 
 // Socket initialization function - improved with better error handling and feedback
 export const initSocket = async (): Promise<Socket> => {
-  // Disconnect existing socket
+  // If we've already tried to connect and it failed, just use mock socket
+  if (connectionAttempted && !socket) {
+    console.log('Previous connection attempt failed, using mock socket directly');
+    socket = createMockSocket();
+    return socket;
+  }
+
+  // If we already have a socket and it's connected, reuse it
+  if (socket && socket.connected) {
+    console.log('Reusing existing socket connection');
+    return socket;
+  }
+  
+  // Disconnect existing socket if it exists but isn't connected
   if (socket) {
     console.log('Disconnecting existing socket connection');
     socket.disconnect();
@@ -273,6 +289,9 @@ export const initSocket = async (): Promise<Socket> => {
     return socket;
   }
   
+  // Mark that we've attempted a connection
+  connectionAttempted = true;
+  
   // First try to create a real socket connection
   try {
     console.log(`Connecting to socket server at ${SERVER_URL}`);
@@ -285,15 +304,13 @@ export const initSocket = async (): Promise<Socket> => {
           socket = createMockSocket();
           resolve(socket);
         }
-      }, 1000); // Increased timeout for more reliable connections
+      }, 1000); // Use 1 second timeout for quick fallback
       
       // Attempt to connect to real server
       socket = io(SERVER_URL, {
         transports: ['websocket', 'polling'], // Try WebSocket first, then polling
-        reconnection: true,
-        reconnectionAttempts: 3,
-        reconnectionDelay: 500,
-        timeout: 2000, // Increased timeout
+        reconnection: false, // Don't auto-reconnect, we'll handle it manually
+        timeout: 2000,
         forceNew: true,
         query: { clientId }
       });
