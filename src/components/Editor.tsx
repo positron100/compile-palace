@@ -119,18 +119,6 @@ const Editor: React.FC<EditorProps> = ({ socketRef, roomId, onCodeChange, langua
       socketRef.current.emit(ACTIONS.SYNC_CODE, { roomId });
     }
     
-    // Also send a sync request via Pusher backend
-    fetch("https://lovable-pusher-fyi9.onrender.com/pusher/request-sync", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        roomId,
-        socketId: pusher.connection.socket_id
-      }),
-    }).catch(err => {
-      console.error("Error requesting code sync via Pusher:", err);
-    });
-    
     // Store channel reference
     setChannel(newChannel);
     
@@ -189,18 +177,22 @@ const Editor: React.FC<EditorProps> = ({ socketRef, roomId, onCodeChange, langua
           if (now - lastEventTimestamp > THROTTLE_MS && roomIdRef.current) {
             setLastEventTimestamp(now);
             
-            // Send update to Pusher backend
-            fetch("https://lovable-pusher-fyi9.onrender.com/pusher/code-update", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
+            // Emit change to socket for other clients
+            if (socketRef.current) {
+              socketRef.current.emit(ACTIONS.CODE_CHANGE, {
                 roomId: roomIdRef.current,
-                code,
-                socketId: pusher.connection.socket_id
-              }),
-            }).catch(err => {
-              console.error("Error sending code update to Pusher backend:", err);
-            });
+                code
+              });
+            }
+            
+            // Also emit to Pusher channel directly
+            if (channel) {
+              try {
+                channel.trigger(ACTIONS.CODE_CHANGE, { code });
+              } catch (err) {
+                console.log("Unable to trigger client-side event, but socket will handle it");
+              }
+            }
           }
         }
       });
