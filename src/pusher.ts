@@ -5,11 +5,9 @@ import Pusher from "pusher-js";
 const pusher = new Pusher("8ff9dd9dd0d8fd5a50a7", {
   cluster: "ap2",
   forceTLS: true,
-  enabledTransports: ["ws", "wss"], // Only use WebSocket protocols
-  disabledTransports: ["xhr_streaming", "xhr_polling", "sockjs"], // Disable polling to prevent CORS issues
-  activityTimeout: 120000, // 2 minutes
-  pongTimeout: 30000 // 30 seconds
-  // Removed all advanced configuration that was causing issues
+  enabledTransports: ["ws", "wss"],
+  disabledTransports: ["xhr_streaming", "xhr_polling", "sockjs"]
+  // Simplified configuration to avoid initialization errors
 });
 
 // Enable debug logging in development mode
