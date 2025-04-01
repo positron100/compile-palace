@@ -11,7 +11,7 @@ const pusher = new Pusher("8ff9dd9dd0d8fd5a50a7", {
       // In a real application, this would be a server call
       // For this demo, we'll simulate a successful auth
       const auth = {
-        auth: `${socketId}:demo`,
+        auth: `${pusher.key}:${Math.random().toString(36).substring(2, 15)}`,
         channel_data: JSON.stringify({
           user_id: Date.now().toString(),
           user_info: { name: "Anonymous" }
