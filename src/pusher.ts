@@ -18,10 +18,9 @@ const pusher = new Pusher("8ff9dd9dd0d8fd5a50a7", {
   authEndpoint: undefined, // Don't use auth endpoint to avoid CORS
   auth: undefined,
   authorizer: undefined,
-  // Enable client events but remove enableAuthorization property as it's not in the Options type
-  client: {
-    disableEncryption: true
-  }
+  // We can't use 'client' property as it's not in the Options type
+  // Use standard encryption option instead
+  encrypted: true
 });
 
 // Enable debug logging in development mode
