@@ -5,28 +5,26 @@ import Pusher from "pusher-js";
 const pusher = new Pusher("8ff9dd9dd0d8fd5a50a7", {
   cluster: "ap2",
   forceTLS: true,
-  // For private channels, we need to provide an authorizer
-  authorizer: (channel) => ({
-    authorize: (socketId, callback) => {
-      try {
-        // In a real application, this would be a server call
-        // For this demo, we'll simulate a successful auth
-        const auth = {
-          auth: `${pusher.key}:${Math.random().toString(36).substring(2, 15)}`,
-          channel_data: JSON.stringify({
-            user_id: Date.now().toString(),
-            user_info: { name: "Anonymous" }
-          })
-        };
-        
-        // Pass null for the error parameter, not false
-        callback(null, auth);
-      } catch (err) {
-        console.error('Pusher authorization error:', err);
-        callback(new Error('Authorization failed'), null);
-      }
-    }
-  })
+  enabledTransports: ["ws", "wss"], // Only use WebSocket protocols
+  disabledTransports: ["xhr_streaming", "xhr_polling", "sockjs"], // Disable polling to prevent CORS issues
+  activityTimeout: 120000, // 2 minutes
+  pongTimeout: 30000, // 30 seconds
+  wsHost: undefined, // Use default Pusher host
+  wsPort: 443,
+  wssPort: 443,
+  httpHost: undefined, // Use default Pusher host
+  httpPort: 80,
+  httpsPort: 443,
+  authEndpoint: undefined, // Don't use auth endpoint to avoid CORS
+  auth: undefined,
+  authorizer: undefined,
+  // Enable client events
+  enableAuthorization: false,
+  enableDecryption: false,
+  client: {
+    disableEncryption: true,
+    enableAuthorization: false,
+  }
 });
 
 // Enable debug logging in development mode

@@ -3,9 +3,8 @@ import { io, Socket } from 'socket.io-client';
 import { v4 as uuidv4 } from 'uuid';
 import ACTIONS from './Actions';
 
-// For production, use a deployed backend URL or just disable socket.io
-// The app should prioritize Pusher for real-time communication
-const SERVER_URL = import.meta.env.VITE_SERVER_URL || null; // Set to null if no server URL provided
+// For production, use a deployed backend URL
+const SERVER_URL = import.meta.env.VITE_SERVER_URL || 'http://localhost:5000';
 
 // Global socket instance
 let socket: Socket | null = null;
@@ -135,20 +134,6 @@ const createMockSocket = (): Socket => {
             callbacks.forEach(cb => setTimeout(() => cb(joinedData), 10));
           });
           
-          // Also emit a presence update event
-          const presenceCallbacks = events[ACTIONS.PRESENCE_UPDATE] || [];
-          presenceCallbacks.forEach(cb => setTimeout(() => cb({
-            clients,
-            count: clients.length
-          }), 15));
-          
-          // And a subscription count update
-          const subCountCallbacks = events[ACTIONS.SUBSCRIPTION_COUNT] || [];
-          subCountCallbacks.forEach(cb => setTimeout(() => cb({
-            roomId,
-            subscription_count: clients.length
-          }), 20));
-          
           // Send current code to the new joiner if available
           if (mockData.roomCodeMap[roomId]) {
             console.log(`Sending current code for room ${roomId} to new user`);
@@ -274,6 +259,13 @@ const createMockSocket = (): Socket => {
 
 // Socket initialization function - improved with better error handling and feedback
 export const initSocket = async (): Promise<Socket> => {
+  // If we've already tried to connect and it failed, just use mock socket
+  if (connectionAttempted && !socket) {
+    console.log('Previous connection attempt failed, using mock socket directly');
+    socket = createMockSocket();
+    return socket;
+  }
+
   // If we already have a socket and it's connected, reuse it
   if (socket && socket.connected) {
     console.log('Reusing existing socket connection');
@@ -299,13 +291,6 @@ export const initSocket = async (): Promise<Socket> => {
   
   // Mark that we've attempted a connection
   connectionAttempted = true;
-  
-  // If no server URL is set or we're in Pusher mode, use mock socket
-  if (!SERVER_URL) {
-    console.log('No socket server URL defined, using mock socket implementation');
-    socket = createMockSocket();
-    return socket;
-  }
   
   // First try to create a real socket connection
   try {

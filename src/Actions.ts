@@ -9,7 +9,7 @@ const ACTIONS = {
   DEBUG_INFO: 'debug-info',
   PRESENCE_UPDATE: 'presence-update',
   SUBSCRIPTION_COUNT: 'subscription-count',
-  // Client-side events must use the client- prefix for Pusher
+  // Add client-side event prefixes for Pusher compatibility
   CLIENT_CODE_CHANGE: 'client-code-change',
   CLIENT_SYNC_REQUEST: 'client-sync-request',
   CLIENT_SYNC_RESPONSE: 'client-sync-response'
