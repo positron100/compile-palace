@@ -1,3 +1,4 @@
+
 import React, { useEffect, useRef, useState, useCallback } from "react";
 import Client from "../components/Client";
 import Editor from "../components/Editor";
@@ -26,9 +27,8 @@ import { Sheet, SheetContent } from "@/components/ui/sheet";
 import pusher from "../pusher";
 
 function EditorPage() {
-  // socket initialization
+  // Socket and state management 
   const socketRef = useRef(null);
-  // for accessing the code in Editor
   const codeRef = useRef(null);
   const location = useLocation();
   const { roomId } = useParams();
@@ -78,56 +78,88 @@ function EditorPage() {
     }
   };
 
-  // Manage client list for UI display
-  const updateClientsList = useCallback((count) => {
+  // Manage client list for UI display - Improved to ensure current user is always shown
+  const updateClientsList = useCallback((count = 1) => {
     if (!count || count < 1) count = 1;
     
-    // We'll keep our own user at position 0
-    const updatedClients = [];
-    
-    // Add current user
-    updatedClients.push({ 
-      socketId: 'local-user', 
-      username: username 
-    });
-    
-    // Add other users with proper sequential naming
-    for (let i = 1; i < count; i++) {
-      const otherUser = {
-        socketId: `user-${i}`,
-        username: `User ${i}`
-      };
+    setClients(prevClients => {
+      // Create a new array to avoid mutation
+      const updatedClients = [...prevClients];
       
-      // Don't add duplicates
-      if (!updatedClients.some(c => c.socketId === otherUser.socketId)) {
-        updatedClients.push(otherUser);
+      // Make sure current user is included
+      const currentUserIndex = updatedClients.findIndex(c => 
+        c.username === username || c.socketId === 'local-user'
+      );
+      
+      // If current user isn't in the list, add them
+      if (currentUserIndex === -1) {
+        updatedClients.push({ 
+          socketId: 'local-user', 
+          username: username 
+        });
       }
-    }
-    
-    setClients(updatedClients);
+      
+      // If we need more users to match the count
+      while (updatedClients.length < count) {
+        // Add anonymous users with unique IDs
+        const newId = `user-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+        updatedClients.push({
+          socketId: newId,
+          username: `User ${updatedClients.length}`
+        });
+      }
+      
+      return updatedClients;
+    });
   }, [username]);
 
   // Initialize Pusher connection
   const initPusher = useCallback(() => {
     if (!roomId) return;
     
-    // Use regular channel for code collaboration
-    const collabChannelName = `collab-${roomId}`;
+    // Use PRIVATE channel for code collaboration (notice the 'private-' prefix)
+    const collabChannelName = `private-collab-${roomId}`;
     
     setConnectionStatus("Connecting to Pusher...");
     
     try {
-      // Subscribe to regular channel for code updates
+      // Subscribe to private channel for code updates
       const collabChannel = pusher.subscribe(collabChannelName);
       
       // Handle successful connection
-      pusher.connection.bind('connected', () => {
+      const handlePusherConnected = () => {
         console.log("Connected to Pusher");
         setSocketConnected(true);
         setSocketError(false);
         setConnectionStatus("Connected to Pusher");
         
         // Initialize with at least our own user
+        updateClientsList(1);
+      };
+      
+      pusher.connection.bind('connected', handlePusherConnected);
+      
+      // If already connected, call the handler immediately
+      if (pusher.connection.state === 'connected') {
+        handlePusherConnected();
+      }
+      
+      // Handle successful subscription to private channel
+      collabChannel.bind('pusher:subscription_succeeded', () => {
+        console.log("Successfully subscribed to private channel");
+        setConnectionStatus("Subscribed to room channel");
+        
+        // Always ensure at least the current user is in the list
+        updateClientsList(1);
+      });
+      
+      // Handle subscription errors
+      collabChannel.bind('pusher:subscription_error', (error) => {
+        console.error("Private channel subscription error:", error);
+        setSocketError(true);
+        setConnectionStatus("Channel subscription failed");
+        
+        // Even if subscription fails, ensure the current user is shown
         updateClientsList(1);
       });
       
@@ -144,6 +176,7 @@ function EditorPage() {
       
       // Listen for client code change events
       collabChannel.bind(ACTIONS.CLIENT_CODE_CHANGE, (data) => {
+        console.log("Received client code change event", data);
         // Update local code reference
         if (data && data.code) {
           codeRef.current = data.code;
@@ -153,6 +186,9 @@ function EditorPage() {
       // Store channel references
       setPusherChannel(collabChannel);
       setInitialized(true);
+      
+      // Ensure we always see at least one user (ourselves)
+      updateClientsList(1);
       
       return collabChannel;
     } catch (error) {
@@ -175,18 +211,35 @@ function EditorPage() {
       console.log("Initializing socket connection");
       initSocket().then(socket => {
         socketRef.current = socket;
-      }).catch(console.error);
+        
+        // Make sure we see at least the current user
+        updateClientsList(1);
+      }).catch(err => {
+        console.error("Socket init error:", err);
+        
+        // Ensure we see at least the current user even if socket fails
+        updateClientsList(1);
+      });
     }
     
     // Initialize Pusher
     const channel = initPusher();
+    
+    // This is a critical fallback to ensure users always see themselves
+    // even if all connections fail
+    setTimeout(() => {
+      if (clients.length === 0) {
+        console.log("No clients detected after timeout, ensuring local user is visible");
+        updateClientsList(1);
+      }
+    }, 1000);
     
     // Cleanup function
     return () => {
       if (channel) {
         console.log("Cleaning up Pusher connection");
         channel.unbind_all();
-        pusher.unsubscribe(`collab-${roomId}`);
+        pusher.unsubscribe(`private-collab-${roomId}`);
       }
       
       if (socketRef.current) {
@@ -195,7 +248,7 @@ function EditorPage() {
         socketRef.current = null;
       }
     };
-  }, [initPusher, roomId]);
+  }, [initPusher, roomId, updateClientsList, clients.length]);
   
   // Check if we need to redirect to home because of missing username
   useEffect(() => {
@@ -221,9 +274,9 @@ function EditorPage() {
   // Leave room and navigate to home
   async function leaveRoom() {
     if (pusherChannel) {
-      // Unsubscribe from Pusher channel
+      // Unsubscribe from Pusher channel - use the correct private channel name
       pusherChannel.unbind_all();
-      pusher.unsubscribe(`collab-${roomId}`);
+      pusher.unsubscribe(`private-collab-${roomId}`);
     }
     
     if (socketRef.current) {
@@ -381,9 +434,9 @@ function EditorPage() {
           </Button>
         </div>
 
-        {/* Animated squares section for the bottom area - Matching home page animation */}
+        {/* Animated squares section */}
         <div className="h-16 md:h-32 relative overflow-hidden bg-gradient-to-b from-purple-50 to-white">
-          {/* Animated squares - using the same animation as login page */}
+          {/* Animated squares */}
           <ul className="squares">
             {Array.from({ length: 10 }).map((_, idx) => (
               <li

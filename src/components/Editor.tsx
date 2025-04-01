@@ -58,7 +58,8 @@ const Editor: React.FC<EditorProps> = ({ socketRef, roomId, onCodeChange, langua
   // Handle remote code changes
   const handleRemoteChange = (data: { code: string, author?: string }) => {
     if (!editorRef.current || !data.code) {
-      return; // Ignore if editor not ready or no code
+      console.log("Remote change ignored: editor not ready or no code received");
+      return;
     }
     
     // Skip if the code is exactly the same (prevents unnecessary updates)
@@ -67,7 +68,7 @@ const Editor: React.FC<EditorProps> = ({ socketRef, roomId, onCodeChange, langua
       return;
     }
     
-    console.log(`Received remote code change from ${data.author || 'unknown user'} - applying to editor`);
+    console.log(`Received remote code change from ${data.author || 'unknown user'}`);
     
     // Save cursor position and scroll state
     const cursor = editorRef.current.getCursor();
@@ -100,30 +101,47 @@ const Editor: React.FC<EditorProps> = ({ socketRef, roomId, onCodeChange, langua
   };
 
   // Handler for sync requests
-  const handleSyncRequest = () => {
-    console.log("Received code sync request, sending current code");
+  const handleSyncRequest = (data: any) => {
+    console.log("Received code sync request from:", data?.requestor || "unknown");
     if (channel && editorRef.current) {
       const currentCode = editorRef.current.getValue();
-      try {
-        channel.trigger(ACTIONS.CLIENT_SYNC_RESPONSE, { 
-          code: currentCode,
-          author: username
-        });
-        console.log("Sent code sync response via client event");
-      } catch (err) {
-        console.error("Error sending code sync response:", err);
+      
+      // Only send sync if we have code or we're the first user (room creator)
+      if (currentCode || previousCodeRef.current) {
+        try {
+          channel.trigger('client-sync-response', { 
+            code: currentCode || previousCodeRef.current,
+            author: username
+          });
+          console.log("Sent code sync response via client event");
+        } catch (err) {
+          console.error("Error sending code sync response:", err);
+          // Fallback to socket
+          if (socketRef.current) {
+            socketRef.current.emit(ACTIONS.SYNC_CODE, {
+              roomId: roomIdRef.current,
+              code: currentCode || previousCodeRef.current
+            });
+            console.log("Sent sync via socket fallback");
+          }
+        }
+      } else {
+        console.log("No code to sync yet");
       }
     }
   };
 
   // Subscribe to Pusher channel for the room
   useEffect(() => {
-    if (!roomId) return;
+    if (!roomId) {
+      console.log("No room ID provided, skipping Pusher subscription");
+      return;
+    }
     
     console.log(`Subscribing to Pusher channel for room: ${roomId}`);
     
-    // Subscribe to the channel for this room
-    const channelName = `collab-${roomId}`;
+    // Subscribe to the PRIVATE channel for this room (notice the 'private-' prefix)
+    const channelName = `private-collab-${roomId}`;
     
     try {
       const newChannel = pusher.subscribe(channelName);
@@ -131,26 +149,39 @@ const Editor: React.FC<EditorProps> = ({ socketRef, roomId, onCodeChange, langua
       // Set up event handlers
       newChannel.bind(ACTIONS.CODE_CHANGE, handleRemoteChange);
       newChannel.bind(ACTIONS.SYNC_CODE, handleRemoteChange);
-      newChannel.bind(ACTIONS.CLIENT_SYNC_RESPONSE, handleRemoteChange);
-      newChannel.bind(ACTIONS.CLIENT_SYNC_REQUEST, handleSyncRequest);
+      newChannel.bind('client-sync-response', handleRemoteChange);
+      newChannel.bind('client-sync-request', handleSyncRequest);
+      newChannel.bind('client-code-change', handleRemoteChange);
       
-      // Request initial code sync via client event
-      console.log("New editor requesting initial code sync");
-      try {
-        newChannel.trigger(ACTIONS.CLIENT_SYNC_REQUEST, { 
-          requestor: username 
-        });
-        console.log("Triggered client-side sync request");
-      } catch (err) {
-        console.log("Unable to trigger client-side sync request:", err);
-        // Fall back to socket.io if Pusher client events fail
-        if (socketRef.current && socketRef.current.connected) {
-          socketRef.current.emit(ACTIONS.SYNC_CODE, { roomId });
-          console.log("Requested sync via socket.io fallback");
-        } else {
-          console.log("No sync mechanism available - starting with empty editor");
-        }
-      }
+      // Wait for subscription to succeed before trying to trigger events
+      newChannel.bind('pusher:subscription_succeeded', () => {
+        console.log('Successfully subscribed to private channel');
+        
+        // Request initial code sync via client event after subscription succeeds
+        setTimeout(() => {
+          console.log("New editor requesting initial code sync");
+          try {
+            newChannel.trigger('client-sync-request', { 
+              requestor: username 
+            });
+            console.log("Triggered client-side sync request");
+          } catch (err) {
+            console.log("Unable to trigger client-side sync request:", err);
+            // Fall back to socket.io if Pusher client events fail
+            if (socketRef.current) {
+              socketRef.current.emit(ACTIONS.SYNC_CODE, { roomId });
+              console.log("Requested sync via socket.io fallback");
+            } else {
+              console.log("No sync mechanism available - starting with empty editor");
+            }
+          }
+        }, 500); // Wait 500ms after subscription succeeds
+      });
+      
+      // Handle subscription errors
+      newChannel.bind('pusher:subscription_error', (error: any) => {
+        console.error('Error subscribing to private channel:', error);
+      });
       
       // Store channel reference
       setChannel(newChannel);
@@ -221,11 +252,20 @@ const Editor: React.FC<EditorProps> = ({ socketRef, roomId, onCodeChange, langua
             // First try to emit via Pusher channel directly (client-side event)
             if (channel) {
               try {
-                channel.trigger(ACTIONS.CLIENT_CODE_CHANGE, { 
+                channel.trigger('client-code-change', { 
                   code,
                   author: username
                 });
                 console.log("Triggered client-side code change event");
+                
+                // Also broadcast through server event for backward compatibility
+                if (socketRef.current && socketRef.current.connected) {
+                  socketRef.current.emit(ACTIONS.CODE_CHANGE, {
+                    roomId: roomIdRef.current,
+                    code,
+                    author: username
+                  });
+                }
               } catch (err) {
                 console.log("Unable to trigger client-side event, trying socket fallback:", err);
                 
