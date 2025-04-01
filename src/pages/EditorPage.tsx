@@ -27,9 +27,8 @@ import { Sheet, SheetContent } from "@/components/ui/sheet";
 import pusher from "../pusher";
 
 function EditorPage() {
-  // socket initialization
+  // Socket and state management 
   const socketRef = useRef(null);
-  // for accessing the code in Editor
   const codeRef = useRef(null);
   const location = useLocation();
   const { roomId } = useParams();
@@ -79,33 +78,39 @@ function EditorPage() {
     }
   };
 
-  // Manage client list for UI display
-  const updateClientsList = useCallback((count) => {
+  // Manage client list for UI display - Improved to ensure current user is always shown
+  const updateClientsList = useCallback((count = 1) => {
     if (!count || count < 1) count = 1;
     
-    // We'll keep our own user at position 0
-    const updatedClients = [];
-    
-    // Add current user
-    updatedClients.push({ 
-      socketId: 'local-user', 
-      username: username 
-    });
-    
-    // Add other users with proper sequential naming
-    for (let i = 1; i < count; i++) {
-      const otherUser = {
-        socketId: `user-${i}`,
-        username: `User ${i}`
-      };
+    setClients(prevClients => {
+      // Create a new array to avoid mutation
+      const updatedClients = [...prevClients];
       
-      // Don't add duplicates
-      if (!updatedClients.some(c => c.socketId === otherUser.socketId)) {
-        updatedClients.push(otherUser);
+      // Make sure current user is included
+      const currentUserIndex = updatedClients.findIndex(c => 
+        c.username === username || c.socketId === 'local-user'
+      );
+      
+      // If current user isn't in the list, add them
+      if (currentUserIndex === -1) {
+        updatedClients.push({ 
+          socketId: 'local-user', 
+          username: username 
+        });
       }
-    }
-    
-    setClients(updatedClients);
+      
+      // If we need more users to match the count
+      while (updatedClients.length < count) {
+        // Add anonymous users with unique IDs
+        const newId = `user-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+        updatedClients.push({
+          socketId: newId,
+          username: `User ${updatedClients.length}`
+        });
+      }
+      
+      return updatedClients;
+    });
   }, [username]);
 
   // Initialize Pusher connection
@@ -122,7 +127,7 @@ function EditorPage() {
       const collabChannel = pusher.subscribe(collabChannelName);
       
       // Handle successful connection
-      pusher.connection.bind('connected', () => {
+      const handlePusherConnected = () => {
         console.log("Connected to Pusher");
         setSocketConnected(true);
         setSocketError(false);
@@ -130,7 +135,14 @@ function EditorPage() {
         
         // Initialize with at least our own user
         updateClientsList(1);
-      });
+      };
+      
+      pusher.connection.bind('connected', handlePusherConnected);
+      
+      // If already connected, call the handler immediately
+      if (pusher.connection.state === 'connected') {
+        handlePusherConnected();
+      }
       
       // Handle successful subscription to private channel
       collabChannel.bind('pusher:subscription_succeeded', () => {
@@ -138,15 +150,7 @@ function EditorPage() {
         setConnectionStatus("Subscribed to room channel");
         
         // Always ensure at least the current user is in the list
-        // This ensures users show up even in mock mode
-        const currentClients = [...clients];
-        if (!currentClients.some(c => c.username === username)) {
-          currentClients.push({
-            socketId: 'local-user',
-            username: username
-          });
-          setClients(currentClients);
-        }
+        updateClientsList(1);
       });
       
       // Handle subscription errors
@@ -183,6 +187,9 @@ function EditorPage() {
       setPusherChannel(collabChannel);
       setInitialized(true);
       
+      // Ensure we always see at least one user (ourselves)
+      updateClientsList(1);
+      
       return collabChannel;
     } catch (error) {
       console.error("Pusher initialization error:", error);
@@ -195,7 +202,7 @@ function EditorPage() {
       updateClientsList(1);
       return null;
     }
-  }, [roomId, updateClientsList, clients, username]);
+  }, [roomId, updateClientsList]);
 
   // Set up socket connection on component mount
   useEffect(() => {
@@ -205,14 +212,12 @@ function EditorPage() {
       initSocket().then(socket => {
         socketRef.current = socket;
         
-        // Ensure we show at least the current user in the list
-        // This is critical for mock socket mode
-        if (clients.length === 0) {
-          updateClientsList(1);
-        }
+        // Make sure we see at least the current user
+        updateClientsList(1);
       }).catch(err => {
         console.error("Socket init error:", err);
-        // Ensure we show at least the current user even if socket fails
+        
+        // Ensure we see at least the current user even if socket fails
         updateClientsList(1);
       });
     }
@@ -220,11 +225,14 @@ function EditorPage() {
     // Initialize Pusher
     const channel = initPusher();
     
-    // Ensure at least the current user appears in the client list
-    // This is a fallback to make sure users always see themselves
-    if (clients.length === 0) {
-      updateClientsList(1);
-    }
+    // This is a critical fallback to ensure users always see themselves
+    // even if all connections fail
+    setTimeout(() => {
+      if (clients.length === 0) {
+        console.log("No clients detected after timeout, ensuring local user is visible");
+        updateClientsList(1);
+      }
+    }, 1000);
     
     // Cleanup function
     return () => {
@@ -426,9 +434,9 @@ function EditorPage() {
           </Button>
         </div>
 
-        {/* Animated squares section for the bottom area - Matching home page animation */}
+        {/* Animated squares section */}
         <div className="h-16 md:h-32 relative overflow-hidden bg-gradient-to-b from-purple-50 to-white">
-          {/* Animated squares - using the same animation as login page */}
+          {/* Animated squares */}
           <ul className="squares">
             {Array.from({ length: 10 }).map((_, idx) => (
               <li

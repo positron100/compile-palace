@@ -8,19 +8,23 @@ const pusher = new Pusher("8ff9dd9dd0d8fd5a50a7", {
   // For private channels, we need to provide an authorizer
   authorizer: (channel) => ({
     authorize: (socketId, callback) => {
-      // In a real application, this would be a server call
-      // For this demo, we'll simulate a successful auth
-      const auth = {
-        auth: `${pusher.key}:${Math.random().toString(36).substring(2, 15)}`,
-        channel_data: JSON.stringify({
-          user_id: Date.now().toString(),
-          user_info: { name: "Anonymous" }
-        })
-      };
-      
-      // Pass null instead of false for the error parameter
-      // This fixes the TypeScript error
-      callback(null, auth);
+      try {
+        // In a real application, this would be a server call
+        // For this demo, we'll simulate a successful auth
+        const auth = {
+          auth: `${pusher.key}:${Math.random().toString(36).substring(2, 15)}`,
+          channel_data: JSON.stringify({
+            user_id: Date.now().toString(),
+            user_info: { name: "Anonymous" }
+          })
+        };
+        
+        // Pass null for the error parameter, not false
+        callback(null, auth);
+      } catch (err) {
+        console.error('Pusher authorization error:', err);
+        callback(new Error('Authorization failed'), null);
+      }
     }
   })
 });

@@ -109,7 +109,7 @@ const Editor: React.FC<EditorProps> = ({ socketRef, roomId, onCodeChange, langua
       // Only send sync if we have code or we're the first user (room creator)
       if (currentCode || previousCodeRef.current) {
         try {
-          channel.trigger(ACTIONS.CLIENT_SYNC_RESPONSE, { 
+          channel.trigger('client-sync-response', { 
             code: currentCode || previousCodeRef.current,
             author: username
           });
@@ -149,8 +149,9 @@ const Editor: React.FC<EditorProps> = ({ socketRef, roomId, onCodeChange, langua
       // Set up event handlers
       newChannel.bind(ACTIONS.CODE_CHANGE, handleRemoteChange);
       newChannel.bind(ACTIONS.SYNC_CODE, handleRemoteChange);
-      newChannel.bind(ACTIONS.CLIENT_SYNC_RESPONSE, handleRemoteChange);
-      newChannel.bind(ACTIONS.CLIENT_SYNC_REQUEST, handleSyncRequest);
+      newChannel.bind('client-sync-response', handleRemoteChange);
+      newChannel.bind('client-sync-request', handleSyncRequest);
+      newChannel.bind('client-code-change', handleRemoteChange);
       
       // Wait for subscription to succeed before trying to trigger events
       newChannel.bind('pusher:subscription_succeeded', () => {
@@ -160,7 +161,7 @@ const Editor: React.FC<EditorProps> = ({ socketRef, roomId, onCodeChange, langua
         setTimeout(() => {
           console.log("New editor requesting initial code sync");
           try {
-            newChannel.trigger(ACTIONS.CLIENT_SYNC_REQUEST, { 
+            newChannel.trigger('client-sync-request', { 
               requestor: username 
             });
             console.log("Triggered client-side sync request");
@@ -251,7 +252,7 @@ const Editor: React.FC<EditorProps> = ({ socketRef, roomId, onCodeChange, langua
             // First try to emit via Pusher channel directly (client-side event)
             if (channel) {
               try {
-                channel.trigger(ACTIONS.CLIENT_CODE_CHANGE, { 
+                channel.trigger('client-code-change', { 
                   code,
                   author: username
                 });

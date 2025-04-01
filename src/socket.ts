@@ -3,8 +3,9 @@ import { io, Socket } from 'socket.io-client';
 import { v4 as uuidv4 } from 'uuid';
 import ACTIONS from './Actions';
 
-// For production, use a deployed backend URL
-const SERVER_URL = import.meta.env.VITE_SERVER_URL || 'http://localhost:5000';
+// For production, use a deployed backend URL or just disable socket.io
+// The app should prioritize Pusher for real-time communication
+const SERVER_URL = import.meta.env.VITE_SERVER_URL || null; // Set to null if no server URL provided
 
 // Global socket instance
 let socket: Socket | null = null;
@@ -273,13 +274,6 @@ const createMockSocket = (): Socket => {
 
 // Socket initialization function - improved with better error handling and feedback
 export const initSocket = async (): Promise<Socket> => {
-  // If we've already tried to connect and it failed, just use mock socket
-  if (connectionAttempted && !socket) {
-    console.log('Previous connection attempt failed, using mock socket directly');
-    socket = createMockSocket();
-    return socket;
-  }
-
   // If we already have a socket and it's connected, reuse it
   if (socket && socket.connected) {
     console.log('Reusing existing socket connection');
@@ -305,6 +299,13 @@ export const initSocket = async (): Promise<Socket> => {
   
   // Mark that we've attempted a connection
   connectionAttempted = true;
+  
+  // If no server URL is set or we're in Pusher mode, use mock socket
+  if (!SERVER_URL) {
+    console.log('No socket server URL defined, using mock socket implementation');
+    socket = createMockSocket();
+    return socket;
+  }
   
   // First try to create a real socket connection
   try {
