@@ -16,6 +16,15 @@ const pusher = new Pusher("8ff9dd9dd0d8fd5a50a7", {
   httpPort: 80,
   httpsPort: 443,
   authEndpoint: undefined, // Don't use auth endpoint to avoid CORS
+  auth: undefined,
+  authorizer: undefined,
+  // Enable client events
+  enableAuthorization: false,
+  enableDecryption: false,
+  client: {
+    disableEncryption: true,
+    enableAuthorization: false,
+  }
 });
 
 // Enable debug logging in development mode

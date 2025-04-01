@@ -52,6 +52,10 @@ function EditorPage() {
   const [connectionStatus, setConnectionStatus] = useState("Connecting...");
   const [pusherChannel, setPusherChannel] = useState(null);
   
+  // Store username for this session
+  const username = location.state?.username || "Anonymous";
+  const [subscriptionCount, setSubscriptionCount] = useState(1);
+  
   // Function to handle compile button click
   const handleCompile = async () => {
     setIsCompiling(true);
@@ -74,11 +78,38 @@ function EditorPage() {
     }
   };
 
+  // Manage client list for UI display
+  const updateClientsList = useCallback((count) => {
+    if (!count || count < 1) count = 1;
+    
+    // We'll keep our own user at position 0
+    const updatedClients = [];
+    
+    // Add current user
+    updatedClients.push({ 
+      socketId: 'local-user', 
+      username: username 
+    });
+    
+    // Add other users with proper sequential naming
+    for (let i = 1; i < count; i++) {
+      const otherUser = {
+        socketId: `user-${i}`,
+        username: `User ${i}`
+      };
+      
+      // Don't add duplicates
+      if (!updatedClients.some(c => c.socketId === otherUser.socketId)) {
+        updatedClients.push(otherUser);
+      }
+    }
+    
+    setClients(updatedClients);
+  }, [username]);
+
   // Initialize Pusher connection
   const initPusher = useCallback(() => {
     if (!roomId) return;
-    
-    const username = location.state?.username || "Anonymous";
     
     // Use regular channel for code collaboration
     const collabChannelName = `collab-${roomId}`;
@@ -96,12 +127,8 @@ function EditorPage() {
         setSocketError(false);
         setConnectionStatus("Connected to Pusher");
         
-        // Update local clients list for UI purposes (since we can't use presence channels without auth)
-        // This is a workaround for preview environments
-        const clientsArray = [
-          { socketId: 'local-user', username: username }
-        ];
-        setClients(clientsArray);
+        // Initialize with at least our own user
+        updateClientsList(1);
       });
       
       // Handle subscription count events for the collab channel
@@ -110,24 +137,16 @@ function EditorPage() {
         
         // If there's subscription_count, we can use it to approximate users
         if (data && data.subscription_count) {
-          // Create mock clients based on count
-          const mockClients = [];
-          
-          // Add current user
-          mockClients.push({ 
-            socketId: 'local-user', 
-            username: username 
-          });
-          
-          // Add other users (anonymous)
-          for (let i = 1; i < data.subscription_count; i++) {
-            mockClients.push({
-              socketId: `anonymous-${i}`,
-              username: `User ${i}`
-            });
-          }
-          
-          setClients(mockClients);
+          setSubscriptionCount(data.subscription_count);
+          updateClientsList(data.subscription_count);
+        }
+      });
+      
+      // Listen for client code change events
+      collabChannel.bind(ACTIONS.CLIENT_CODE_CHANGE, (data) => {
+        // Update local code reference
+        if (data && data.code) {
+          codeRef.current = data.code;
         }
       });
       
@@ -144,11 +163,10 @@ function EditorPage() {
       toast.error("Failed to connect to Pusher, using local mode");
       
       // Create a fake client for UI demonstration
-      const username = location.state?.username || "Anonymous";
-      setClients([{ socketId: 'local-user', username }]);
+      updateClientsList(1);
       return null;
     }
-  }, [roomId, location.state?.username]);
+  }, [roomId, updateClientsList]);
 
   // Set up socket connection on component mount
   useEffect(() => {
@@ -344,6 +362,7 @@ function EditorPage() {
             socketRef={socketRef}
             roomId={roomId || ""}
             language={language}
+            username={username}
             onCodeChange={(code) => {
               codeRef.current = code;
             }}
