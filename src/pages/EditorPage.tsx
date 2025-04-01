@@ -1,3 +1,4 @@
+
 import React, { useEffect, useRef, useState, useCallback } from "react";
 import Client from "../components/Client";
 import Editor from "../components/Editor";
@@ -111,13 +112,13 @@ function EditorPage() {
   const initPusher = useCallback(() => {
     if (!roomId) return;
     
-    // Use regular channel for code collaboration
-    const collabChannelName = `collab-${roomId}`;
+    // Use PRIVATE channel for code collaboration (notice the 'private-' prefix)
+    const collabChannelName = `private-collab-${roomId}`;
     
     setConnectionStatus("Connecting to Pusher...");
     
     try {
-      // Subscribe to regular channel for code updates
+      // Subscribe to private channel for code updates
       const collabChannel = pusher.subscribe(collabChannelName);
       
       // Handle successful connection
@@ -129,6 +130,19 @@ function EditorPage() {
         
         // Initialize with at least our own user
         updateClientsList(1);
+      });
+      
+      // Handle successful subscription to private channel
+      collabChannel.bind('pusher:subscription_succeeded', () => {
+        console.log("Successfully subscribed to private channel");
+        setConnectionStatus("Subscribed to room channel");
+      });
+      
+      // Handle subscription errors
+      collabChannel.bind('pusher:subscription_error', (error) => {
+        console.error("Private channel subscription error:", error);
+        setSocketError(true);
+        setConnectionStatus("Channel subscription failed");
       });
       
       // Handle subscription count events for the collab channel
@@ -144,6 +158,7 @@ function EditorPage() {
       
       // Listen for client code change events
       collabChannel.bind(ACTIONS.CLIENT_CODE_CHANGE, (data) => {
+        console.log("Received client code change event", data);
         // Update local code reference
         if (data && data.code) {
           codeRef.current = data.code;
@@ -221,9 +236,9 @@ function EditorPage() {
   // Leave room and navigate to home
   async function leaveRoom() {
     if (pusherChannel) {
-      // Unsubscribe from Pusher channel
+      // Unsubscribe from Pusher channel - use the correct private channel name
       pusherChannel.unbind_all();
-      pusher.unsubscribe(`collab-${roomId}`);
+      pusher.unsubscribe(`private-collab-${roomId}`);
     }
     
     if (socketRef.current) {

@@ -5,9 +5,23 @@ import Pusher from "pusher-js";
 const pusher = new Pusher("8ff9dd9dd0d8fd5a50a7", {
   cluster: "ap2",
   forceTLS: true,
-  enabledTransports: ["ws", "wss"],
-  disabledTransports: ["xhr_streaming", "xhr_polling", "sockjs"]
-  // Simplified configuration to avoid initialization errors
+  authEndpoint: "/pusher/auth", // This endpoint would typically be on your server
+  // For development, we'll use a dummy authorizer that automatically authenticates all private channels
+  authorizer: (channel) => ({
+    authorize: (socketId, callback) => {
+      // In a real application, this would be a server call
+      // For this demo, we'll simulate a successful auth
+      const auth = {
+        auth: `${socketId}:demo`,
+        channel_data: JSON.stringify({
+          user_id: Date.now().toString(),
+          user_info: { name: "Anonymous" }
+        })
+      };
+      
+      callback(false, auth);
+    }
+  })
 });
 
 // Enable debug logging in development mode

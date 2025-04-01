@@ -140,8 +140,8 @@ const Editor: React.FC<EditorProps> = ({ socketRef, roomId, onCodeChange, langua
     
     console.log(`Subscribing to Pusher channel for room: ${roomId}`);
     
-    // Subscribe to the channel for this room
-    const channelName = `collab-${roomId}`;
+    // Subscribe to the PRIVATE channel for this room (notice the 'private-' prefix)
+    const channelName = `private-collab-${roomId}`;
     
     try {
       const newChannel = pusher.subscribe(channelName);
@@ -152,25 +152,35 @@ const Editor: React.FC<EditorProps> = ({ socketRef, roomId, onCodeChange, langua
       newChannel.bind(ACTIONS.CLIENT_SYNC_RESPONSE, handleRemoteChange);
       newChannel.bind(ACTIONS.CLIENT_SYNC_REQUEST, handleSyncRequest);
       
-      // Request initial code sync via client event after a short delay to allow for connection setup
-      setTimeout(() => {
-        console.log("New editor requesting initial code sync");
-        try {
-          newChannel.trigger(ACTIONS.CLIENT_SYNC_REQUEST, { 
-            requestor: username 
-          });
-          console.log("Triggered client-side sync request");
-        } catch (err) {
-          console.log("Unable to trigger client-side sync request:", err);
-          // Fall back to socket.io if Pusher client events fail
-          if (socketRef.current) {
-            socketRef.current.emit(ACTIONS.SYNC_CODE, { roomId });
-            console.log("Requested sync via socket.io fallback");
-          } else {
-            console.log("No sync mechanism available - starting with empty editor");
+      // Wait for subscription to succeed before trying to trigger events
+      newChannel.bind('pusher:subscription_succeeded', () => {
+        console.log('Successfully subscribed to private channel');
+        
+        // Request initial code sync via client event after subscription succeeds
+        setTimeout(() => {
+          console.log("New editor requesting initial code sync");
+          try {
+            newChannel.trigger(ACTIONS.CLIENT_SYNC_REQUEST, { 
+              requestor: username 
+            });
+            console.log("Triggered client-side sync request");
+          } catch (err) {
+            console.log("Unable to trigger client-side sync request:", err);
+            // Fall back to socket.io if Pusher client events fail
+            if (socketRef.current) {
+              socketRef.current.emit(ACTIONS.SYNC_CODE, { roomId });
+              console.log("Requested sync via socket.io fallback");
+            } else {
+              console.log("No sync mechanism available - starting with empty editor");
+            }
           }
-        }
-      }, 500); // Wait 500ms for connection to establish
+        }, 500); // Wait 500ms after subscription succeeds
+      });
+      
+      // Handle subscription errors
+      newChannel.bind('pusher:subscription_error', (error: any) => {
+        console.error('Error subscribing to private channel:', error);
+      });
       
       // Store channel reference
       setChannel(newChannel);
