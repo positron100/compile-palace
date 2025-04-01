@@ -5,8 +5,7 @@ import Pusher from "pusher-js";
 const pusher = new Pusher("8ff9dd9dd0d8fd5a50a7", {
   cluster: "ap2",
   forceTLS: true,
-  authEndpoint: "/pusher/auth", // This endpoint would typically be on your server
-  // For development, we'll use a dummy authorizer that automatically authenticates all private channels
+  // For private channels, we need to provide an authorizer
   authorizer: (channel) => ({
     authorize: (socketId, callback) => {
       // In a real application, this would be a server call
@@ -19,7 +18,9 @@ const pusher = new Pusher("8ff9dd9dd0d8fd5a50a7", {
         })
       };
       
-      callback(false, auth);
+      // Pass null instead of false for the error parameter
+      // This fixes the TypeScript error
+      callback(null, auth);
     }
   })
 });
