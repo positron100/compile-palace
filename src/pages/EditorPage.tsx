@@ -136,17 +136,6 @@ function EditorPage() {
       collabChannel.bind('pusher:subscription_succeeded', () => {
         console.log("Successfully subscribed to private channel");
         setConnectionStatus("Subscribed to room channel");
-        
-        // Always ensure at least the current user is in the list
-        // This ensures users show up even in mock mode
-        const currentClients = [...clients];
-        if (!currentClients.some(c => c.username === username)) {
-          currentClients.push({
-            socketId: 'local-user',
-            username: username
-          });
-          setClients(currentClients);
-        }
       });
       
       // Handle subscription errors
@@ -154,9 +143,6 @@ function EditorPage() {
         console.error("Private channel subscription error:", error);
         setSocketError(true);
         setConnectionStatus("Channel subscription failed");
-        
-        // Even if subscription fails, ensure the current user is shown
-        updateClientsList(1);
       });
       
       // Handle subscription count events for the collab channel
@@ -195,7 +181,7 @@ function EditorPage() {
       updateClientsList(1);
       return null;
     }
-  }, [roomId, updateClientsList, clients, username]);
+  }, [roomId, updateClientsList]);
 
   // Set up socket connection on component mount
   useEffect(() => {
@@ -204,34 +190,18 @@ function EditorPage() {
       console.log("Initializing socket connection");
       initSocket().then(socket => {
         socketRef.current = socket;
-        
-        // Ensure we show at least the current user in the list
-        // This is critical for mock socket mode
-        if (clients.length === 0) {
-          updateClientsList(1);
-        }
-      }).catch(err => {
-        console.error("Socket init error:", err);
-        // Ensure we show at least the current user even if socket fails
-        updateClientsList(1);
-      });
+      }).catch(console.error);
     }
     
     // Initialize Pusher
     const channel = initPusher();
-    
-    // Ensure at least the current user appears in the client list
-    // This is a fallback to make sure users always see themselves
-    if (clients.length === 0) {
-      updateClientsList(1);
-    }
     
     // Cleanup function
     return () => {
       if (channel) {
         console.log("Cleaning up Pusher connection");
         channel.unbind_all();
-        pusher.unsubscribe(`private-collab-${roomId}`);
+        pusher.unsubscribe(`collab-${roomId}`);
       }
       
       if (socketRef.current) {
@@ -240,7 +210,7 @@ function EditorPage() {
         socketRef.current = null;
       }
     };
-  }, [initPusher, roomId, updateClientsList, clients.length]);
+  }, [initPusher, roomId]);
   
   // Check if we need to redirect to home because of missing username
   useEffect(() => {
