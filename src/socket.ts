@@ -134,6 +134,20 @@ const createMockSocket = (): Socket => {
             callbacks.forEach(cb => setTimeout(() => cb(joinedData), 10));
           });
           
+          // Also emit a presence update event
+          const presenceCallbacks = events[ACTIONS.PRESENCE_UPDATE] || [];
+          presenceCallbacks.forEach(cb => setTimeout(() => cb({
+            clients,
+            count: clients.length
+          }), 15));
+          
+          // And a subscription count update
+          const subCountCallbacks = events[ACTIONS.SUBSCRIPTION_COUNT] || [];
+          subCountCallbacks.forEach(cb => setTimeout(() => cb({
+            roomId,
+            subscription_count: clients.length
+          }), 20));
+          
           // Send current code to the new joiner if available
           if (mockData.roomCodeMap[roomId]) {
             console.log(`Sending current code for room ${roomId} to new user`);
