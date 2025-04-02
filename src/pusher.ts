@@ -1,4 +1,3 @@
-
 import Pusher from "pusher-js";
 import crypto from 'crypto-js';
 
@@ -15,6 +14,21 @@ const getUserId = () => {
 // Get username from localStorage or use anonymous
 const getUsername = () => {
   return localStorage.getItem('username') || 'Anonymous';
+};
+
+/**
+ * Determines the type of Pusher channel based on its name
+ * @param channelName The name of the channel
+ * @returns 'public', 'private', or 'presence'
+ */
+export const getChannelType = (channelName: string): 'public' | 'private' | 'presence' => {
+  if (channelName.startsWith('private-')) {
+    return 'private';
+  } else if (channelName.startsWith('presence-')) {
+    return 'presence';
+  } else {
+    return 'public';
+  }
 };
 
 // Create a proper HMAC SHA256 signature for Pusher private channels
