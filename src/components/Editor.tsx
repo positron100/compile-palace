@@ -1,4 +1,3 @@
-
 import React, { useEffect, useRef, useState } from "react";
 import Codemirror from "codemirror";
 import "codemirror/mode/javascript/javascript";
@@ -41,7 +40,6 @@ const Editor: React.FC<EditorProps> = ({ socketRef, roomId, onCodeChange, langua
     // Save username in localStorage for Pusher auth
     if (username) {
       localStorage.setItem('username', username);
-      localStorage.setItem('userId', `user-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`);
     }
   }, [roomId, username]);
   
@@ -158,9 +156,21 @@ const Editor: React.FC<EditorProps> = ({ socketRef, roomId, onCodeChange, langua
       newChannel.bind(ACTIONS.CLIENT_SYNC_REQUEST, handleSyncRequest);
       newChannel.bind(ACTIONS.CLIENT_CODE_CHANGE, handleRemoteChange);
       
-      // When subscription succeeds, request initial code
+      // When subscription succeeds, announce presence and request initial code
       newChannel.bind('pusher:subscription_succeeded', () => {
         console.log('Successfully subscribed to private channel:', channelName);
+        
+        // Announce presence
+        try {
+          newChannel.trigger(ACTIONS.CLIENT_PRESENCE_UPDATE, {
+            username,
+            timestamp: Date.now(),
+            action: 'connected'
+          });
+          console.log(`Announced presence as ${username} to channel ${channelName}`);
+        } catch (err) {
+          console.error("Failed to announce presence:", err);
+        }
         
         // Request initial code sync
         setTimeout(() => {
@@ -190,6 +200,14 @@ const Editor: React.FC<EditorProps> = ({ socketRef, roomId, onCodeChange, langua
       return () => {
         console.log(`Unsubscribing from Pusher channel: ${channelName}`);
         try {
+          // Announce disconnection before unsubscribing
+          newChannel.trigger(ACTIONS.CLIENT_PRESENCE_UPDATE, {
+            username,
+            timestamp: Date.now(),
+            action: 'disconnected'
+          });
+          
+          // Then unsubscribe
           newChannel.unbind_all();
           pusher.unsubscribe(channelName);
         } catch (err) {
@@ -202,7 +220,7 @@ const Editor: React.FC<EditorProps> = ({ socketRef, roomId, onCodeChange, langua
     }
   }, [roomId, username]);
 
-  // Initializing code editor
+  // Initializing code editor and handling changes
   useEffect(() => {
     async function init() {
       const textarea = document.getElementById("realtimeEditor");

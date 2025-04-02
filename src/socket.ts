@@ -1,4 +1,3 @@
-
 import { io, Socket } from 'socket.io-client';
 import { v4 as uuidv4 } from 'uuid';
 import ACTIONS from './Actions';
@@ -149,6 +148,14 @@ const createMockSocket = (): Socket => {
             subscription_count: clients.length
           }), 20));
           
+          // And user connected event
+          const userConnectedCallbacks = events[ACTIONS.USER_CONNECTED] || [];
+          userConnectedCallbacks.forEach(cb => setTimeout(() => cb({
+            username: validUsername,
+            socketId: mockSocketId,
+            timestamp: Date.now(),
+          }), 25));
+          
           // Send current code to the new joiner if available
           if (mockData.roomCodeMap[roomId]) {
             console.log(`Sending current code for room ${roomId} to new user`);
@@ -160,16 +167,31 @@ const createMockSocket = (): Socket => {
         }, 50);
       }
       
+      // Handle USER_CONNECTED and USER_DISCONNECTED events for presence
+      if (event === ACTIONS.USER_CONNECTED && args[0]?.username) {
+        const { roomId, username } = args[0];
+        if (roomId && mockData.rooms[roomId]) {
+          broadcastToRoom(roomId, ACTIONS.USER_CONNECTED, { username, timestamp: Date.now() }, false);
+        }
+      }
+      
+      if (event === ACTIONS.USER_DISCONNECTED && args[0]?.username) {
+        const { roomId, username } = args[0];
+        if (roomId && mockData.rooms[roomId]) {
+          broadcastToRoom(roomId, ACTIONS.USER_DISCONNECTED, { username, timestamp: Date.now() }, false);
+        }
+      }
+      
       // Handle CODE_CHANGE event
       if (event === ACTIONS.CODE_CHANGE && args[0]?.roomId && args[0]?.code) {
-        const { roomId, code } = args[0];
+        const { roomId, code, author } = args[0];
         
         // Store the code in the roomCodeMap
         mockData.roomCodeMap[roomId] = code;
         
         // Broadcast to all other clients in room
         setTimeout(() => {
-          broadcastToRoom(roomId, ACTIONS.CODE_CHANGE, { code }, true);
+          broadcastToRoom(roomId, ACTIONS.CODE_CHANGE, { code, author }, true);
         }, 10);
       }
       

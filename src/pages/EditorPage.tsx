@@ -1,4 +1,3 @@
-
 import React, { useEffect, useRef, useState, useCallback } from "react";
 import Client from "../components/Client";
 import Editor from "../components/Editor";
@@ -25,6 +24,7 @@ import {
 } from "@/components/ui/select";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import pusher from "../pusher";
+import { getCleanLanguageName } from "../utils/languageUtils";
 
 function EditorPage() {
   // Socket and state management 
@@ -462,7 +462,7 @@ function EditorPage() {
               <SelectContent className="bg-white border-purple-100">
                 {languageOptions.map((lang) => (
                   <SelectItem key={lang.id} value={lang.id.toString()}>
-                    {lang.name.split(' ')[0]} {/* Display only the language name, not version */}
+                    {getCleanLanguageName(lang.name)}
                   </SelectItem>
                 ))}
               </SelectContent>
