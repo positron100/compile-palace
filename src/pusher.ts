@@ -9,17 +9,18 @@ const pusher = new Pusher("8ff9dd9dd0d8fd5a50a7", {
   authorizer: (channel) => ({
     authorize: (socketId, callback) => {
       try {
-        // In a real application, this would be a server call
-        // For this demo, we'll simulate a successful auth
+        // For this demo, we're simulating a successful auth
+        // In a production app, this would call your server
         const auth = {
           auth: `${pusher.key}:${Math.random().toString(36).substring(2, 15)}`,
           channel_data: JSON.stringify({
-            user_id: Date.now().toString(),
-            user_info: { name: "Anonymous" }
+            user_id: localStorage.getItem('userId') || Date.now().toString(),
+            user_info: { 
+              name: localStorage.getItem('username') || 'Anonymous' 
+            }
           })
         };
         
-        // Pass null for the error parameter, not false
         callback(null, auth);
       } catch (err) {
         console.error('Pusher authorization error:', err);

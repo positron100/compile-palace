@@ -32,7 +32,7 @@ const LanguageSelector: React.FC<LanguageSelectorProps> = ({ language, setLangua
         </option>
         {languageOptions.map((lang) => (
           <option key={lang.id} value={lang.id}>
-            {lang.name}
+            {lang.name.split(' ')[0]} {/* Only display the language name, not the version */}
           </option>
         ))}
       </select>
