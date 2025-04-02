@@ -18,7 +18,12 @@ const ACTIONS = {
   CLIENT_CODE_CHANGE: 'client-code-change',
   CLIENT_SYNC_REQUEST: 'client-sync-request',
   CLIENT_SYNC_RESPONSE: 'client-sync-response',
-  CLIENT_PRESENCE_UPDATE: 'client-presence-update'
+  CLIENT_PRESENCE_UPDATE: 'client-presence-update',
+  
+  // New events for better presence management
+  CLIENT_JOIN_ROOM: 'client-join-room',
+  CLIENT_LEAVE_ROOM: 'client-leave-room',
+  CLIENT_USER_LIST: 'client-user-list'
 };
 
 export default ACTIONS;

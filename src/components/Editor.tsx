@@ -1,3 +1,4 @@
+
 import React, { useEffect, useRef, useState } from "react";
 import Codemirror from "codemirror";
 import "codemirror/mode/javascript/javascript";
@@ -13,6 +14,7 @@ import "codemirror/lib/codemirror.css";
 import "codemirror/theme/dracula.css";
 import ACTIONS from "../Actions";
 import pusher from "../pusher";
+import { toast } from "sonner";
 
 interface EditorProps {
   socketRef: React.MutableRefObject<any>;
@@ -89,6 +91,11 @@ const Editor: React.FC<EditorProps> = ({ socketRef, roomId, onCodeChange, langua
       
       // Notify parent component
       onCodeChange(data.code);
+      
+      // Show toast only if the author is different from the current user
+      if (data.author && data.author !== username) {
+        toast.info(`Code updated by ${data.author}`);
+      }
     } catch (err) {
       console.error("Error applying remote code change:", err);
     } finally {
@@ -156,6 +163,23 @@ const Editor: React.FC<EditorProps> = ({ socketRef, roomId, onCodeChange, langua
       newChannel.bind(ACTIONS.CLIENT_SYNC_REQUEST, handleSyncRequest);
       newChannel.bind(ACTIONS.CLIENT_CODE_CHANGE, handleRemoteChange);
       
+      // Add an event handler for acknowledging user presence
+      newChannel.bind(ACTIONS.CLIENT_JOIN_ROOM, (data: any) => {
+        console.log(`User ${data.username} joined the room`);
+        // If we have any code, send it as a response
+        if (editorRef.current && (editorRef.current.getValue() || previousCodeRef.current)) {
+          try {
+            newChannel.trigger(ACTIONS.CLIENT_SYNC_RESPONSE, {
+              code: editorRef.current.getValue() || previousCodeRef.current,
+              author: username
+            });
+            console.log(`Sent current code to new user ${data.username}`);
+          } catch (err) {
+            console.error("Error sending code to new user:", err);
+          }
+        }
+      });
+      
       // When subscription succeeds, announce presence and request initial code
       newChannel.bind('pusher:subscription_succeeded', () => {
         console.log('Successfully subscribed to private channel:', channelName);
@@ -168,6 +192,13 @@ const Editor: React.FC<EditorProps> = ({ socketRef, roomId, onCodeChange, langua
             action: 'connected'
           });
           console.log(`Announced presence as ${username} to channel ${channelName}`);
+          
+          // Also announce joining the room specifically
+          newChannel.trigger(ACTIONS.CLIENT_JOIN_ROOM, {
+            username,
+            timestamp: Date.now()
+          });
+          console.log(`Announced joining room as ${username}`);
         } catch (err) {
           console.error("Failed to announce presence:", err);
         }
