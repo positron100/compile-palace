@@ -36,13 +36,13 @@ const pusher = new Pusher("8ff9dd9dd0d8fd5a50a7", {
         
         // Create a dummy auth signature that Pusher client will accept
         // Note: This is NOT secure for production use - you should use a real server
-        callback(false, {
+        callback(null, {
           auth: `${pusher.key}:${socketId}`,
           channel_data: channelData
         });
       } catch (err) {
         console.error('Pusher authorization error:', err);
-        callback(new Error('Authorization failed'), null);
+        callback(err instanceof Error ? err : new Error('Authorization failed'), null);
       }
     }
   })
