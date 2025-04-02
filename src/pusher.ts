@@ -64,7 +64,8 @@ const pusher = new Pusher("8ff9dd9dd0d8fd5a50a7", {
         });
       } catch (err) {
         console.error('Pusher authorization error:', err);
-        callback(err instanceof Error ? err : new Error('Authorization failed'));
+        // Fix: Pass an object as the second argument when there's an error
+        callback(err instanceof Error ? err : new Error('Authorization failed'), null);
       }
     }
   })
