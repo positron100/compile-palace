@@ -1,4 +1,3 @@
-
 import React, { useEffect, useRef, useState, useCallback } from "react";
 import Client from "../components/Client";
 import Editor from "../components/Editor";
@@ -94,8 +93,8 @@ function EditorPage() {
       
       newClients.forEach(newClient => {
         const exists = updatedClients.some(
-          client => client.socketId === newClient.socketId || 
-                   client.username === newClient.username
+          client => (client.socketId === newClient.socketId) || 
+                   (client.username === newClient.username)
         );
         
         if (!exists) {
@@ -118,7 +117,6 @@ function EditorPage() {
   const initPusher = useCallback(() => {
     if (!roomId) return null;
     
-    // Use public channel naming consistently
     const channelName = `collab-${roomId}`;
     
     setConnectionStatus("Connecting to Pusher...");
@@ -148,7 +146,13 @@ function EditorPage() {
         
         updateClientsList([{ socketId: 'local-user', username: username }]);
         
-        // Use standard public channel events
+        channel.bind(ACTIONS.ROOM_USERS, (data) => {
+          if (data && data.users) {
+            console.log("Received updated room users:", data.users);
+            updateClientsList(data.users);
+          }
+        });
+        
         channel.bind(ACTIONS.JOIN_ROOM, (data) => {
           if (data && data.username && data.username !== username) {
             console.log(`${data.username} joined the room via server event`);
@@ -178,6 +182,13 @@ function EditorPage() {
             }
           }
         });
+        
+        channel.bind(ACTIONS.CODE_BROADCAST, (data) => {
+          console.log("Received code broadcast event", data);
+          if (data && data.code) {
+            codeRef.current = data.code;
+          }
+        });
       });
       
       channel.bind(ACTIONS.PRESENCE_UPDATE, (data) => {
@@ -202,7 +213,6 @@ function EditorPage() {
         }
       });
       
-      // Handle code changes from other users
       channel.bind(ACTIONS.CODE_UPDATE, (data) => {
         console.log("Received code update event from server", data);
         if (data && data.code) {
@@ -252,24 +262,20 @@ function EditorPage() {
             setClients(prev => prev.filter(client => client.socketId !== socketId));
           });
           
-          // Add handlers for code synchronization
           socket.on(ACTIONS.CODE_CHANGE, (data) => {
             if (data && data.code) {
               codeRef.current = data.code;
-              // Broadcast to other users via Pusher from server
-              if (pusherChannel) {
-                pusherChannel.emit(ACTIONS.CODE_UPDATE, {
-                  code: data.code,
-                  author: data.author
-                });
-              }
+            }
+          });
+          
+          socket.on(ACTIONS.CODE_BROADCAST, (data) => {
+            if (data && data.code) {
+              codeRef.current = data.code;
             }
           });
           
           socket.on(ACTIONS.SYNC_REQUEST, (data) => {
-            // Fixed: This handler needs to access codeRef instead of editorRef
             if (codeRef && codeRef.current) {
-              // Send current code value stored in codeRef
               socket.emit(ACTIONS.SYNC_RESPONSE, {
                 roomId,
                 code: codeRef.current,
@@ -291,6 +297,13 @@ function EditorPage() {
                 username: data.username 
               }], true);
               toast.success(`${data.username} joined the room`);
+            }
+          });
+          
+          socket.on(ACTIONS.ROOM_USERS, (data) => {
+            if (data && data.users) {
+              console.log("Received room users update:", data.users);
+              updateClientsList(data.users);
             }
           });
           
@@ -491,6 +504,11 @@ function EditorPage() {
           <div className="text-sm text-purple-600 font-medium">
             <span className="hidden sm:inline">Room: </span>
             <span className="text-purple-800">{roomId}</span>
+            {subscriptionCount > 0 && (
+              <span className="ml-2 text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full">
+                {subscriptionCount} {subscriptionCount === 1 ? 'user' : 'users'}
+              </span>
+            )}
           </div>
         </div>
         

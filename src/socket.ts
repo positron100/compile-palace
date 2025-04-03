@@ -12,13 +12,14 @@ let socket: Socket | null = null;
 // Flag to indicate if we already tried to connect and failed
 let connectionAttempted = false;
 
-// Global mock data to replicate server behavior
+// Global mock data to replicate server behavior - this data persists across page reloads
 if (typeof window !== 'undefined') {
   if (!(window as any).__mockData) {
     (window as any).__mockData = {
       rooms: {},
       userSocketMap: {},
-      roomCodeMap: {} // Store code for each room
+      roomCodeMap: {}, // Store code for each room
+      allUsers: {} // Track all users globally by username
     };
   }
 }
@@ -46,6 +47,31 @@ const getAllConnectedClients = (roomId: string) => {
   });
 };
 
+// Store client data in localStorage to persist across tabs
+const setLocalUserData = (username: string, roomId: string) => {
+  try {
+    const userData = {
+      username,
+      roomId,
+      lastSeen: Date.now()
+    };
+    localStorage.setItem('userData', JSON.stringify(userData));
+  } catch (err) {
+    console.error("Error storing user data in localStorage", err);
+  }
+};
+
+// Get user data from localStorage
+const getLocalUserData = () => {
+  try {
+    const userData = localStorage.getItem('userData');
+    return userData ? JSON.parse(userData) : null;
+  } catch (err) {
+    console.error("Error retrieving user data from localStorage", err);
+    return null;
+  }
+};
+
 // Enhanced mock socket to closely mirror the original server implementation
 const createMockSocket = (): Socket => {
   console.log('Creating mock socket for offline mode');
@@ -64,6 +90,11 @@ const createMockSocket = (): Socket => {
           callbacks.forEach(cb => setTimeout(() => cb(data), 10)); // Small delay to mimic network
         }
       });
+      
+      // If this is a code change event, store it for future users
+      if (event === ACTIONS.CODE_CHANGE || event === ACTIONS.CODE_BROADCAST) {
+        mockData.roomCodeMap[roomId] = data.code;
+      }
     }
   };
   
@@ -103,8 +134,18 @@ const createMockSocket = (): Socket => {
         // Validate username and set a default if needed
         const validUsername = username || 'Anonymous';
         
+        // Store in localStorage for persistence across tabs
+        setLocalUserData(validUsername, roomId);
+        
         // Add user to socket map (like userSocketMap on server)
         mockData.userSocketMap[mockSocketId] = validUsername;
+        
+        // Track globally
+        mockData.allUsers[validUsername] = {
+          socketId: mockSocketId,
+          lastSeen: Date.now(),
+          roomId
+        };
         
         // Add socket to room
         if (!mockData.rooms[roomId]) {
@@ -156,12 +197,23 @@ const createMockSocket = (): Socket => {
             timestamp: Date.now(),
           }), 25));
           
+          // Also broadcast the room users event
+          const roomUsersCallbacks = events[ACTIONS.ROOM_USERS] || [];
+          roomUsersCallbacks.forEach(cb => setTimeout(() => cb({
+            roomId,
+            users: clients,
+            count: clients.length
+          }), 30));
+          
           // Send current code to the new joiner if available
           if (mockData.roomCodeMap[roomId]) {
             console.log(`Sending current code for room ${roomId} to new user`);
             const syncCallbacks = events[ACTIONS.SYNC_CODE] || [];
             syncCallbacks.forEach(cb => setTimeout(() => {
-              cb({ code: mockData.roomCodeMap[roomId] });
+              cb({ 
+                code: mockData.roomCodeMap[roomId],
+                author: 'system'
+              });
             }, 50));
           }
         }, 50);
@@ -182,8 +234,50 @@ const createMockSocket = (): Socket => {
         }
       }
       
+      // Handle PRESENCE_UPDATE_EVENT
+      if (event === ACTIONS.PRESENCE_UPDATE_EVENT && args[0]?.roomId) {
+        const { roomId, username, action } = args[0];
+        
+        if (roomId && username) {
+          // Update all users tracking
+          if (action === 'connected') {
+            mockData.allUsers[username] = {
+              socketId: mockSocketId,
+              lastSeen: Date.now(),
+              roomId
+            };
+          }
+          
+          // Broadcast to the room
+          broadcastToRoom(roomId, ACTIONS.PRESENCE_UPDATE_EVENT, args[0], false);
+          
+          // Also send updated user list
+          const clients = getAllConnectedClients(roomId);
+          broadcastToRoom(roomId, ACTIONS.ROOM_USERS, {
+            roomId,
+            users: clients,
+            count: clients.length
+          }, false);
+        }
+      }
+      
+      // Handle JOIN_ROOM event
+      if (event === ACTIONS.JOIN_ROOM && args[0]?.roomId) {
+        const { roomId, username } = args[0];
+        
+        broadcastToRoom(roomId, ACTIONS.JOIN_ROOM, args[0], false);
+        
+        // Also send updated user list
+        const clients = getAllConnectedClients(roomId);
+        broadcastToRoom(roomId, ACTIONS.ROOM_USERS, {
+          roomId,
+          users: clients,
+          count: clients.length
+        }, false);
+      }
+      
       // Handle CODE_CHANGE event
-      if (event === ACTIONS.CODE_CHANGE && args[0]?.roomId && args[0]?.code) {
+      if ((event === ACTIONS.CODE_CHANGE || event === ACTIONS.CODE_BROADCAST) && args[0]?.roomId && args[0]?.code) {
         const { roomId, code, author } = args[0];
         
         // Store the code in the roomCodeMap
@@ -191,7 +285,7 @@ const createMockSocket = (): Socket => {
         
         // Broadcast to all other clients in room
         setTimeout(() => {
-          broadcastToRoom(roomId, ACTIONS.CODE_CHANGE, { code, author }, true);
+          broadcastToRoom(roomId, event, { code, author }, true);
         }, 10);
       }
       
@@ -207,6 +301,27 @@ const createMockSocket = (): Socket => {
           const syncCallbacks = events[ACTIONS.SYNC_CODE] || [];
           syncCallbacks.forEach(cb => cb({ code }));
         }, 30);
+      }
+      
+      // Handle SYNC_REQUEST event
+      if (event === ACTIONS.SYNC_REQUEST && args[0]?.roomId) {
+        const { roomId, requestor } = args[0];
+        console.log(`Mock socket: Sync request from ${requestor} for room ${roomId}`);
+        
+        // Broadcast the request to all clients in the room
+        broadcastToRoom(roomId, ACTIONS.SYNC_REQUEST, args[0], false);
+      }
+      
+      // Handle SYNC_RESPONSE event
+      if (event === ACTIONS.SYNC_RESPONSE && args[0]?.roomId && args[0]?.code) {
+        const { roomId, code, author } = args[0];
+        console.log(`Mock socket: Sync response from ${author} for room ${roomId}`);
+        
+        // Store the code in the roomCodeMap
+        mockData.roomCodeMap[roomId] = code;
+        
+        // Broadcast to all clients in the room
+        broadcastToRoom(roomId, ACTIONS.SYNC_RESPONSE, args[0], false);
       }
       
       return this;
@@ -237,11 +352,12 @@ const createMockSocket = (): Socket => {
     disconnect: function() {
       console.log('Mock socket: Disconnecting...');
       
+      // Get current user info
+      const username = mockData.userSocketMap[mockSocketId] || 'Anonymous';
+      
       // Broadcast DISCONNECTED to all rooms this socket is in
       mockRooms.forEach((roomId) => {
         if (mockData.rooms[roomId]) {
-          const username = mockData.userSocketMap[mockSocketId] || 'Anonymous';
-          
           // Remove this socket from the room first 
           mockData.rooms[roomId].delete(mockSocketId);
           
@@ -251,16 +367,46 @@ const createMockSocket = (): Socket => {
             username
           }, true);
           
+          // Also broadcast user disconnected event
+          broadcastToRoom(roomId, ACTIONS.USER_DISCONNECTED, {
+            username,
+            timestamp: Date.now()
+          }, true);
+          
+          // Also broadcast presence update
+          broadcastToRoom(roomId, ACTIONS.PRESENCE_UPDATE_EVENT, {
+            roomId,
+            username,
+            timestamp: Date.now(),
+            action: 'disconnected'
+          }, true);
+          
           // Clean up empty rooms
           if (mockData.rooms[roomId].size === 0) {
             delete mockData.rooms[roomId];
-            delete mockData.roomCodeMap[roomId];
+            // Keep roomCodeMap for when users return
+          } else {
+            // Update room users list
+            const clients = getAllConnectedClients(roomId);
+            broadcastToRoom(roomId, ACTIONS.ROOM_USERS, {
+              roomId,
+              users: clients,
+              count: clients.length
+            }, true);
           }
         }
       });
       
       // Remove from user socket map
       delete mockData.userSocketMap[mockSocketId];
+      
+      // Remove from global users tracking
+      Object.keys(mockData.allUsers).forEach(key => {
+        if (mockData.allUsers[key].socketId === mockSocketId) {
+          delete mockData.allUsers[key];
+        }
+      });
+      
       mockRooms.clear();
       
       // Clear all event listeners

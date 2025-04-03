@@ -154,7 +154,8 @@ const Editor: React.FC<EditorProps> = ({ socketRef, roomId, onCodeChange, langua
       newChannel.bind(ACTIONS.SYNC_CODE, handleRemoteChange);
       newChannel.bind(ACTIONS.SYNC_RESPONSE, handleRemoteChange);
       newChannel.bind(ACTIONS.SYNC_REQUEST, handleSyncRequest);
-      newChannel.bind(ACTIONS.CODE_UPDATE, handleRemoteChange);  // New public event
+      newChannel.bind(ACTIONS.CODE_UPDATE, handleRemoteChange);
+      newChannel.bind(ACTIONS.CODE_BROADCAST, handleRemoteChange);
       
       // Add an event handler for acknowledging user presence
       newChannel.bind(ACTIONS.JOIN_ROOM, (data: any) => {
@@ -315,6 +316,61 @@ const Editor: React.FC<EditorProps> = ({ socketRef, roomId, onCodeChange, langua
       editorRef.current.setOption("mode", getModeForLanguage(language.id));
     }
   }, [language]);
+  
+  // Extra effect to handle code changes with improved broadcasting
+  useEffect(() => {
+    if (!editorRef.current) return;
+    
+    const handleChange = (instance: Codemirror.Editor, changes: any) => {
+      // Exit early if we should ignore this change (from remote update)
+      if (ignoreChangeRef.current) {
+        return;
+      }
+
+      const { origin } = changes;
+      const code = instance.getValue();
+      
+      // Only handle local user input
+      if (origin === "input" || origin === "+input" || origin === "+delete") {
+        // Update parent component
+        onCodeChange(code);
+        previousCodeRef.current = code;
+        
+        // Throttle updates to reduce network traffic
+        const now = Date.now();
+        if (now - lastEventTimestamp > THROTTLE_MS && roomIdRef.current) {
+          setLastEventTimestamp(now);
+          
+          // Use socket for all communication since we can't use client events on public channels
+          if (socketRef.current) {
+            console.log("Sending code via socket.io");
+            socketRef.current.emit(ACTIONS.CODE_CHANGE, {
+              roomId: roomIdRef.current,
+              code,
+              author: username
+            });
+            
+            // Also emit the new CODE_BROADCAST event
+            socketRef.current.emit(ACTIONS.CODE_BROADCAST, {
+              roomId: roomIdRef.current,
+              code,
+              author: username
+            });
+          } else {
+            console.warn("No way to emit code change - local mode only");
+          }
+        }
+      }
+    };
+    
+    editorRef.current.on("change", handleChange);
+    
+    return () => {
+      if (editorRef.current) {
+        editorRef.current.off("change", handleChange);
+      }
+    };
+  }, [lastEventTimestamp, onCodeChange, socketRef, username]);
   
   return <textarea id="realtimeEditor"></textarea>;
 };
