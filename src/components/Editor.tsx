@@ -1,4 +1,3 @@
-
 import React, { useEffect, useRef, useState } from "react";
 import Codemirror from "codemirror";
 import "codemirror/mode/javascript/javascript";
@@ -150,8 +149,8 @@ const Editor: React.FC<EditorProps> = ({ socketRef, roomId, onCodeChange, langua
     
     console.log(`Subscribing to Pusher channel for room: ${roomId}`);
     
-    // Subscribe to the PRIVATE channel for this room
-    const channelName = `private-collab-${roomId}`;
+    // Subscribe to the PUBLIC channel for this room (removed 'private-' prefix)
+    const channelName = `collab-${roomId}`;
     
     try {
       const newChannel = pusher.subscribe(channelName);
@@ -182,7 +181,7 @@ const Editor: React.FC<EditorProps> = ({ socketRef, roomId, onCodeChange, langua
       
       // When subscription succeeds, announce presence and request initial code
       newChannel.bind('pusher:subscription_succeeded', () => {
-        console.log('Successfully subscribed to private channel:', channelName);
+        console.log('Successfully subscribed to public channel:', channelName);
         
         // Announce presence
         try {
@@ -217,11 +216,6 @@ const Editor: React.FC<EditorProps> = ({ socketRef, roomId, onCodeChange, langua
             }
           }
         }, 500);
-      });
-      
-      // Handle subscription errors
-      newChannel.bind('pusher:subscription_error', (error: any) => {
-        console.error('Error subscribing to private channel:', error);
       });
       
       // Store channel reference

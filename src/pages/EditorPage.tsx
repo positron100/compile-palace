@@ -117,7 +117,7 @@ function EditorPage() {
   const initPusher = useCallback(() => {
     if (!roomId) return null;
     
-    const channelName = `private-collab-${roomId}`;
+    const channelName = `collab-${roomId}`;
     
     setConnectionStatus("Connecting to Pusher...");
     
@@ -140,7 +140,7 @@ function EditorPage() {
       }
       
       channel.bind('pusher:subscription_succeeded', () => {
-        console.log("Successfully subscribed to private channel");
+        console.log("Successfully subscribed to public channel");
         setConnectionStatus("Subscribed to room channel");
         
         updateClientsList([{ socketId: 'local-user', username: username }]);
@@ -195,7 +195,7 @@ function EditorPage() {
       });
       
       channel.bind('pusher:subscription_error', (error) => {
-        console.error("Private channel subscription error:", error);
+        console.error("Public channel subscription error:", error);
         setSocketError(true);
         setConnectionStatus("Channel subscription failed");
         
@@ -288,7 +288,7 @@ function EditorPage() {
       if (channel) {
         console.log("Cleaning up Pusher connection");
         channel.unbind_all();
-        pusher.unsubscribe(`private-collab-${roomId}`);
+        pusher.unsubscribe(`collab-${roomId}`);
       }
       
       if (socketRef.current) {
@@ -320,7 +320,7 @@ function EditorPage() {
   async function leaveRoom() {
     if (pusherChannel) {
       pusherChannel.unbind_all();
-      pusher.unsubscribe(`private-collab-${roomId}`);
+      pusher.unsubscribe(`collab-${roomId}`);
     }
     
     if (socketRef.current) {
