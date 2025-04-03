@@ -1,3 +1,4 @@
+
 import React, { useEffect, useRef, useState, useCallback } from "react";
 import Client from "../components/Client";
 import Editor from "../components/Editor";
@@ -266,11 +267,12 @@ function EditorPage() {
           });
           
           socket.on(ACTIONS.SYNC_REQUEST, (data) => {
-            if (editorRef && editorRef.current && editorRef.current.getValue) {
-              const currentCode = editorRef.current.getValue();
+            // Fixed: This handler needs to access codeRef instead of editorRef
+            if (codeRef && codeRef.current) {
+              // Send current code value stored in codeRef
               socket.emit(ACTIONS.SYNC_RESPONSE, {
                 roomId,
-                code: currentCode,
+                code: codeRef.current,
                 author: username
               });
             }
