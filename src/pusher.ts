@@ -1,6 +1,5 @@
 
 import Pusher from "pusher-js";
-import crypto from 'crypto-js';
 
 // Generate a consistent user ID for the current browser session
 const getUserId = () => {
@@ -36,7 +35,7 @@ export const getChannelType = (channelName: string): 'public' | 'private' | 'pre
 const pusher = new Pusher("8ff9dd9dd0d8fd5a50a7", {
   cluster: "ap2",
   forceTLS: true
-  // Removed authorizer as we're now using public channels
+  // No authorizer needed for public channels
 });
 
 // Enable debug logging in development mode

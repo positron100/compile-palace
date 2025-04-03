@@ -1,3 +1,4 @@
+
 import React, { useEffect, useRef, useState } from "react";
 import Codemirror from "codemirror";
 import "codemirror/mode/javascript/javascript";
@@ -149,11 +150,12 @@ const Editor: React.FC<EditorProps> = ({ socketRef, roomId, onCodeChange, langua
     
     console.log(`Subscribing to Pusher channel for room: ${roomId}`);
     
-    // Subscribe to the PUBLIC channel for this room (removed 'private-' prefix)
+    // Subscribe to the PUBLIC channel for this room
     const channelName = `collab-${roomId}`;
     
     try {
       const newChannel = pusher.subscribe(channelName);
+      console.log(`Successfully subscribed to channel: ${channelName}`);
       
       // Set up event handlers
       newChannel.bind(ACTIONS.CODE_CHANGE, handleRemoteChange);
@@ -295,6 +297,7 @@ const Editor: React.FC<EditorProps> = ({ socketRef, roomId, onCodeChange, langua
             // Try to emit via Pusher channel first
             if (channel) {
               try {
+                console.log("Triggering code change event via Pusher client event");
                 channel.trigger(ACTIONS.CLIENT_CODE_CHANGE, { 
                   code,
                   author: username

@@ -1,3 +1,4 @@
+
 import React, { useEffect, useRef, useState, useCallback } from "react";
 import Client from "../components/Client";
 import Editor from "../components/Editor";
@@ -13,7 +14,7 @@ import {
 import ACTIONS from "../Actions";
 import { toast } from "sonner";
 import { submitCode, languageOptions } from "../services/compileService";
-import { Play, Copy, LogOut, WifiOff, Users } from "lucide-react";
+import { Play, Copy, LogOut, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -117,11 +118,13 @@ function EditorPage() {
   const initPusher = useCallback(() => {
     if (!roomId) return null;
     
+    // Use public channel naming consistently
     const channelName = `collab-${roomId}`;
     
     setConnectionStatus("Connecting to Pusher...");
     
     try {
+      console.log(`Initializing Pusher connection and subscribing to ${channelName}`);
       const channel = pusher.subscribe(channelName);
       
       const handlePusherConnected = () => {
@@ -140,7 +143,7 @@ function EditorPage() {
       }
       
       channel.bind('pusher:subscription_succeeded', () => {
-        console.log("Successfully subscribed to public channel");
+        console.log(`Successfully subscribed to public channel: ${channelName}`);
         setConnectionStatus("Subscribed to room channel");
         
         updateClientsList([{ socketId: 'local-user', username: username }]);
@@ -175,6 +178,7 @@ function EditorPage() {
           }
         });
         
+        // Announce joining the room with a delay to ensure subscription is complete
         setTimeout(() => {
           try {
             channel.trigger(ACTIONS.CLIENT_JOIN_ROOM, {
@@ -182,6 +186,13 @@ function EditorPage() {
               timestamp: Date.now()
             });
             console.log(`Announced joining room as ${username}`);
+            
+            // Also trigger presence update
+            channel.trigger(ACTIONS.CLIENT_PRESENCE_UPDATE, {
+              username,
+              timestamp: Date.now(),
+              action: 'connected'
+            });
           } catch (err) {
             console.error("Failed to announce room join:", err);
           }
@@ -210,6 +221,7 @@ function EditorPage() {
         }
       });
       
+      // Handle code changes from other users
       channel.bind(ACTIONS.CLIENT_CODE_CHANGE, (data) => {
         console.log("Received client code change event", data);
         if (data && data.code) {
