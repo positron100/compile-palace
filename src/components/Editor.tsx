@@ -113,27 +113,19 @@ const Editor: React.FC<EditorProps> = ({ socketRef, roomId, onCodeChange, langua
   // Handler for sync requests
   const handleSyncRequest = (data: any) => {
     console.log("Received code sync request from:", data?.requestor || "unknown");
-    if (channel && editorRef.current) {
+    if (editorRef.current) {
       const currentCode = editorRef.current.getValue();
       
       // Only send sync if we have code or we're the first user (room creator)
       if (currentCode || previousCodeRef.current) {
-        try {
-          channel.trigger(ACTIONS.CLIENT_SYNC_RESPONSE, { 
+        // Send via socket instead of client event
+        if (socketRef.current) {
+          socketRef.current.emit(ACTIONS.SYNC_RESPONSE, {
+            roomId: roomIdRef.current,
             code: currentCode || previousCodeRef.current,
             author: username
           });
-          console.log("Sent code sync response via client event");
-        } catch (err) {
-          console.error("Error sending code sync response:", err);
-          // Fallback to socket
-          if (socketRef.current) {
-            socketRef.current.emit(ACTIONS.SYNC_CODE, {
-              roomId: roomIdRef.current,
-              code: currentCode || previousCodeRef.current
-            });
-            console.log("Sent sync via socket fallback");
-          }
+          console.log("Sent sync via socket");
         }
       } else {
         console.log("No code to sync yet");
@@ -157,67 +149,60 @@ const Editor: React.FC<EditorProps> = ({ socketRef, roomId, onCodeChange, langua
       const newChannel = pusher.subscribe(channelName);
       console.log(`Successfully subscribed to channel: ${channelName}`);
       
-      // Set up event handlers
+      // Set up event handlers for public events
       newChannel.bind(ACTIONS.CODE_CHANGE, handleRemoteChange);
       newChannel.bind(ACTIONS.SYNC_CODE, handleRemoteChange);
-      newChannel.bind(ACTIONS.CLIENT_SYNC_RESPONSE, handleRemoteChange);
-      newChannel.bind(ACTIONS.CLIENT_SYNC_REQUEST, handleSyncRequest);
-      newChannel.bind(ACTIONS.CLIENT_CODE_CHANGE, handleRemoteChange);
+      newChannel.bind(ACTIONS.SYNC_RESPONSE, handleRemoteChange);
+      newChannel.bind(ACTIONS.SYNC_REQUEST, handleSyncRequest);
+      newChannel.bind(ACTIONS.CODE_UPDATE, handleRemoteChange);  // New public event
       
       // Add an event handler for acknowledging user presence
-      newChannel.bind(ACTIONS.CLIENT_JOIN_ROOM, (data: any) => {
+      newChannel.bind(ACTIONS.JOIN_ROOM, (data: any) => {
         console.log(`User ${data.username} joined the room`);
-        // If we have any code, send it as a response
+        // If we have any code, send it as a response via socket
         if (editorRef.current && (editorRef.current.getValue() || previousCodeRef.current)) {
-          try {
-            newChannel.trigger(ACTIONS.CLIENT_SYNC_RESPONSE, {
+          if (socketRef.current) {
+            socketRef.current.emit(ACTIONS.SYNC_RESPONSE, {
+              roomId: roomIdRef.current,
               code: editorRef.current.getValue() || previousCodeRef.current,
               author: username
             });
-            console.log(`Sent current code to new user ${data.username}`);
-          } catch (err) {
-            console.error("Error sending code to new user:", err);
+            console.log(`Sent current code to new user ${data.username} via socket`);
           }
         }
       });
       
-      // When subscription succeeds, announce presence and request initial code
+      // When subscription succeeds, announce presence and request initial code via socket
       newChannel.bind('pusher:subscription_succeeded', () => {
         console.log('Successfully subscribed to public channel:', channelName);
         
-        // Announce presence
-        try {
-          newChannel.trigger(ACTIONS.CLIENT_PRESENCE_UPDATE, {
+        // Announce presence via socket
+        if (socketRef.current) {
+          socketRef.current.emit(ACTIONS.PRESENCE_UPDATE_EVENT, {
+            roomId: roomIdRef.current,
             username,
             timestamp: Date.now(),
             action: 'connected'
           });
-          console.log(`Announced presence as ${username} to channel ${channelName}`);
+          console.log(`Announced presence as ${username} via socket`);
           
-          // Also announce joining the room specifically
-          newChannel.trigger(ACTIONS.CLIENT_JOIN_ROOM, {
+          // Also announce joining the room via socket
+          socketRef.current.emit(ACTIONS.JOIN_ROOM, {
+            roomId: roomIdRef.current,
             username,
             timestamp: Date.now()
           });
-          console.log(`Announced joining room as ${username}`);
-        } catch (err) {
-          console.error("Failed to announce presence:", err);
-        }
-        
-        // Request initial code sync
-        setTimeout(() => {
-          try {
-            console.log("Requesting initial code sync via client event");
-            newChannel.trigger(ACTIONS.CLIENT_SYNC_REQUEST, { 
+          console.log(`Announced joining room as ${username} via socket`);
+          
+          // Request initial code sync via socket
+          setTimeout(() => {
+            socketRef.current.emit(ACTIONS.SYNC_REQUEST, { 
+              roomId: roomIdRef.current,
               requestor: username 
             });
-          } catch (err) {
-            console.error("Failed to trigger sync request:", err);
-            if (socketRef.current) {
-              socketRef.current.emit(ACTIONS.SYNC_CODE, { roomId });
-            }
-          }
-        }, 500);
+            console.log("Requesting initial code sync via socket");
+          }, 500);
+        }
       });
       
       // Store channel reference
@@ -227,12 +212,15 @@ const Editor: React.FC<EditorProps> = ({ socketRef, roomId, onCodeChange, langua
       return () => {
         console.log(`Unsubscribing from Pusher channel: ${channelName}`);
         try {
-          // Announce disconnection before unsubscribing
-          newChannel.trigger(ACTIONS.CLIENT_PRESENCE_UPDATE, {
-            username,
-            timestamp: Date.now(),
-            action: 'disconnected'
-          });
+          // Announce disconnection via socket
+          if (socketRef.current) {
+            socketRef.current.emit(ACTIONS.PRESENCE_UPDATE_EVENT, {
+              roomId: roomIdRef.current,
+              username,
+              timestamp: Date.now(),
+              action: 'disconnected'
+            });
+          }
           
           // Then unsubscribe
           newChannel.unbind_all();
@@ -245,7 +233,7 @@ const Editor: React.FC<EditorProps> = ({ socketRef, roomId, onCodeChange, langua
       console.error("Error subscribing to Pusher channel", err);
       return () => {};
     }
-  }, [roomId, username]);
+  }, [roomId, username, socketRef]);
 
   // Initializing code editor and handling changes
   useEffect(() => {
@@ -294,39 +282,16 @@ const Editor: React.FC<EditorProps> = ({ socketRef, roomId, onCodeChange, langua
           if (now - lastEventTimestamp > THROTTLE_MS && roomIdRef.current) {
             setLastEventTimestamp(now);
             
-            // Try to emit via Pusher channel first
-            if (channel) {
-              try {
-                console.log("Triggering code change event via Pusher client event");
-                channel.trigger(ACTIONS.CLIENT_CODE_CHANGE, { 
-                  code,
-                  author: username
-                });
-                console.log("Sent code change via Pusher client event");
-                
-                // Also broadcast through server for compatibility
-                if (socketRef.current) {
-                  socketRef.current.emit(ACTIONS.CODE_CHANGE, {
-                    roomId: roomIdRef.current,
-                    code,
-                    author: username
-                  });
-                }
-              } catch (err) {
-                console.error("Failed to trigger client-side event:", err);
-                
-                // Fallback to socket
-                if (socketRef.current) {
-                  socketRef.current.emit(ACTIONS.CODE_CHANGE, {
-                    roomId: roomIdRef.current,
-                    code,
-                    author: username
-                  });
-                  console.log("Sent code change via socket fallback");
-                } else {
-                  console.warn("No way to emit code change - local mode only");
-                }
-              }
+            // Use socket for all communication since we can't use client events on public channels
+            if (socketRef.current) {
+              socketRef.current.emit(ACTIONS.CODE_CHANGE, {
+                roomId: roomIdRef.current,
+                code,
+                author: username
+              });
+              console.log("Sent code change via socket");
+            } else {
+              console.warn("No way to emit code change - local mode only");
             }
           }
         }

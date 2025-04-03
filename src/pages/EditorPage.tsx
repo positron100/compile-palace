@@ -1,4 +1,3 @@
-
 import React, { useEffect, useRef, useState, useCallback } from "react";
 import Client from "../components/Client";
 import Editor from "../components/Editor";
@@ -148,9 +147,10 @@ function EditorPage() {
         
         updateClientsList([{ socketId: 'local-user', username: username }]);
         
-        channel.bind(ACTIONS.CLIENT_JOIN_ROOM, (data) => {
+        // Use standard public channel events
+        channel.bind(ACTIONS.JOIN_ROOM, (data) => {
           if (data && data.username && data.username !== username) {
-            console.log(`${data.username} joined the room via client event`);
+            console.log(`${data.username} joined the room via server event`);
             toast.success(`${data.username} joined the room`);
             
             updateClientsList([{ 
@@ -160,7 +160,7 @@ function EditorPage() {
           }
         });
         
-        channel.bind(ACTIONS.CLIENT_PRESENCE_UPDATE, (data) => {
+        channel.bind(ACTIONS.PRESENCE_UPDATE_EVENT, (data) => {
           if (data && data.username) {
             console.log(`Presence update from ${data.username}: ${data.action}`);
             
@@ -177,26 +177,6 @@ function EditorPage() {
             }
           }
         });
-        
-        // Announce joining the room with a delay to ensure subscription is complete
-        setTimeout(() => {
-          try {
-            channel.trigger(ACTIONS.CLIENT_JOIN_ROOM, {
-              username,
-              timestamp: Date.now()
-            });
-            console.log(`Announced joining room as ${username}`);
-            
-            // Also trigger presence update
-            channel.trigger(ACTIONS.CLIENT_PRESENCE_UPDATE, {
-              username,
-              timestamp: Date.now(),
-              action: 'connected'
-            });
-          } catch (err) {
-            console.error("Failed to announce room join:", err);
-          }
-        }, 300);
       });
       
       channel.bind(ACTIONS.PRESENCE_UPDATE, (data) => {
@@ -222,8 +202,8 @@ function EditorPage() {
       });
       
       // Handle code changes from other users
-      channel.bind(ACTIONS.CLIENT_CODE_CHANGE, (data) => {
-        console.log("Received client code change event", data);
+      channel.bind(ACTIONS.CODE_UPDATE, (data) => {
+        console.log("Received code update event from server", data);
         if (data && data.code) {
           codeRef.current = data.code;
         }
@@ -269,6 +249,62 @@ function EditorPage() {
             toast.info(`${username} left the room`);
             
             setClients(prev => prev.filter(client => client.socketId !== socketId));
+          });
+          
+          // Add handlers for code synchronization
+          socket.on(ACTIONS.CODE_CHANGE, (data) => {
+            if (data && data.code) {
+              codeRef.current = data.code;
+              // Broadcast to other users via Pusher from server
+              if (pusherChannel) {
+                pusherChannel.emit(ACTIONS.CODE_UPDATE, {
+                  code: data.code,
+                  author: data.author
+                });
+              }
+            }
+          });
+          
+          socket.on(ACTIONS.SYNC_REQUEST, (data) => {
+            if (editorRef && editorRef.current && editorRef.current.getValue) {
+              const currentCode = editorRef.current.getValue();
+              socket.emit(ACTIONS.SYNC_RESPONSE, {
+                roomId,
+                code: currentCode,
+                author: username
+              });
+            }
+          });
+          
+          socket.on(ACTIONS.SYNC_RESPONSE, (data) => {
+            if (data && data.code) {
+              codeRef.current = data.code;
+            }
+          });
+          
+          socket.on(ACTIONS.JOIN_ROOM, (data) => {
+            if (data && data.username && data.username !== username) {
+              updateClientsList([{ 
+                socketId: `user-${Date.now()}-${Math.random().toString(36).slice(2)}`, 
+                username: data.username 
+              }], true);
+              toast.success(`${data.username} joined the room`);
+            }
+          });
+          
+          socket.on(ACTIONS.PRESENCE_UPDATE_EVENT, (data) => {
+            if (data && data.username) {
+              if (data.action === 'connected' && data.username !== username) {
+                updateClientsList([{ 
+                  socketId: `user-${Date.now()}-${Math.random().toString(36).slice(2)}`, 
+                  username: data.username 
+                }], true);
+                toast.success(`${data.username} is now online`);
+              } else if (data.action === 'disconnected' && data.username !== username) {
+                setClients(prev => prev.filter(client => client.username !== data.username));
+                toast.info(`${data.username} disconnected`);
+              }
+            }
           });
           
           if (roomId) {

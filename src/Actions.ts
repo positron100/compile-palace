@@ -14,16 +14,14 @@ const ACTIONS = {
   USER_CONNECTED: 'user-connected',
   USER_DISCONNECTED: 'user-disconnected',
   
-  // Client-side events must use the 'client-' prefix for Pusher
-  CLIENT_CODE_CHANGE: 'client-code-change',
-  CLIENT_SYNC_REQUEST: 'client-sync-request',
-  CLIENT_SYNC_RESPONSE: 'client-sync-response',
-  CLIENT_PRESENCE_UPDATE: 'client-presence-update',
-  
-  // New events for better presence management
-  CLIENT_JOIN_ROOM: 'client-join-room',
-  CLIENT_LEAVE_ROOM: 'client-leave-room',
-  CLIENT_USER_LIST: 'client-user-list'
+  // For public channels we need to use regular events (no client- prefix)
+  CODE_UPDATE: 'code-update',
+  SYNC_REQUEST: 'sync-request',
+  SYNC_RESPONSE: 'sync-response',
+  PRESENCE_UPDATE_EVENT: 'presence-update-event',
+  JOIN_ROOM: 'join-room',
+  LEAVE_ROOM: 'leave-room',
+  USER_LIST: 'user-list'
 };
 
 export default ACTIONS;
