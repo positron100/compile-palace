@@ -13,7 +13,7 @@ import "codemirror/addon/edit/closetag";
 import "codemirror/lib/codemirror.css";
 import "codemirror/theme/dracula.css";
 import ACTIONS from "../Actions";
-import pusher from "../pusher";
+import pusher, { updateRoomCode, getRoomCode } from "../pusher";
 import { toast } from "sonner";
 
 interface EditorProps {
@@ -89,6 +89,9 @@ const Editor: React.FC<EditorProps> = ({ socketRef, roomId, onCodeChange, langua
       // Update the previous code ref
       previousCodeRef.current = data.code;
       
+      // Update global room state
+      updateRoomCode(roomIdRef.current, data.code);
+      
       // Notify parent component
       onCodeChange(data.code);
       
@@ -115,17 +118,24 @@ const Editor: React.FC<EditorProps> = ({ socketRef, roomId, onCodeChange, langua
     console.log("Received code sync request from:", data?.requestor || "unknown");
     if (editorRef.current) {
       const currentCode = editorRef.current.getValue();
+      const storedCode = getRoomCode(roomIdRef.current);
+      
+      // Use current code, stored code, or previous code - in that order
+      const codeToSync = currentCode || storedCode || previousCodeRef.current;
       
       // Only send sync if we have code or we're the first user (room creator)
-      if (currentCode || previousCodeRef.current) {
+      if (codeToSync) {
         // Send via socket instead of client event
         if (socketRef.current) {
           socketRef.current.emit(ACTIONS.SYNC_RESPONSE, {
             roomId: roomIdRef.current,
-            code: currentCode || previousCodeRef.current,
+            code: codeToSync,
             author: username
           });
           console.log("Sent sync via socket");
+          
+          // Also update global state
+          updateRoomCode(roomIdRef.current, codeToSync);
         }
       } else {
         console.log("No code to sync yet");
@@ -161,14 +171,23 @@ const Editor: React.FC<EditorProps> = ({ socketRef, roomId, onCodeChange, langua
       newChannel.bind(ACTIONS.JOIN_ROOM, (data: any) => {
         console.log(`User ${data.username} joined the room`);
         // If we have any code, send it as a response via socket
-        if (editorRef.current && (editorRef.current.getValue() || previousCodeRef.current)) {
-          if (socketRef.current) {
+        if (editorRef.current) {
+          const currentCode = editorRef.current.getValue();
+          const storedCode = getRoomCode(roomIdRef.current);
+          
+          // Use current code, stored code, or previous code - in that order
+          const codeToSync = currentCode || storedCode || previousCodeRef.current;
+          
+          if (codeToSync && socketRef.current) {
             socketRef.current.emit(ACTIONS.SYNC_RESPONSE, {
               roomId: roomIdRef.current,
-              code: editorRef.current.getValue() || previousCodeRef.current,
+              code: codeToSync,
               author: username
             });
             console.log(`Sent current code to new user ${data.username} via socket`);
+            
+            // Also update global state
+            updateRoomCode(roomIdRef.current, codeToSync);
           }
         }
       });
@@ -176,6 +195,13 @@ const Editor: React.FC<EditorProps> = ({ socketRef, roomId, onCodeChange, langua
       // When subscription succeeds, announce presence and request initial code via socket
       newChannel.bind('pusher:subscription_succeeded', () => {
         console.log('Successfully subscribed to public channel:', channelName);
+        
+        // Check for existing code in global state
+        const storedCode = getRoomCode(roomIdRef.current);
+        if (storedCode) {
+          console.log('Found stored code in global state, applying it');
+          handleRemoteChange({ code: storedCode, author: 'system' });
+        }
         
         // Announce presence via socket
         if (socketRef.current) {
@@ -202,7 +228,22 @@ const Editor: React.FC<EditorProps> = ({ socketRef, roomId, onCodeChange, langua
               requestor: username 
             });
             console.log("Requesting initial code sync via socket");
+            
+            // Global sync request
+            socketRef.current.emit(ACTIONS.GLOBAL_SYNC_REQUEST, { 
+              roomId: roomIdRef.current,
+              requestor: username 
+            });
+            console.log("Requesting global state sync via socket");
           }, 500);
+        }
+      });
+      
+      // Global sync response handler
+      newChannel.bind(ACTIONS.GLOBAL_SYNC_RESPONSE, (data: any) => {
+        console.log("Received global sync response:", data);
+        if (data && data.code) {
+          handleRemoteChange({ code: data.code, author: 'system' });
         }
       });
       
@@ -260,6 +301,13 @@ const Editor: React.FC<EditorProps> = ({ socketRef, roomId, onCodeChange, langua
         const initialCode = editorRef.current.getValue();
         previousCodeRef.current = initialCode;
         onCodeChange(initialCode);
+        
+        // Check for stored code in global state
+        const storedCode = getRoomCode(roomIdRef.current);
+        if (storedCode && storedCode !== initialCode) {
+          console.log('Found stored code in global state, applying it');
+          handleRemoteChange({ code: storedCode, author: 'system' });
+        }
       }
 
       // Handling code changes with throttling to reduce network traffic
@@ -278,6 +326,9 @@ const Editor: React.FC<EditorProps> = ({ socketRef, roomId, onCodeChange, langua
           onCodeChange(code);
           previousCodeRef.current = code;
           
+          // Update global state
+          updateRoomCode(roomIdRef.current, code);
+          
           // Throttle updates to reduce network traffic
           const now = Date.now();
           if (now - lastEventTimestamp > THROTTLE_MS && roomIdRef.current) {
@@ -291,6 +342,14 @@ const Editor: React.FC<EditorProps> = ({ socketRef, roomId, onCodeChange, langua
                 author: username
               });
               console.log("Sent code change via socket");
+              
+              // Also emit the CODE_BROADCAST event for consistency
+              socketRef.current.emit(ACTIONS.CODE_BROADCAST, {
+                roomId: roomIdRef.current,
+                code,
+                author: username
+              });
+              console.log("Sent code broadcast via socket");
             } else {
               console.warn("No way to emit code change - local mode only");
             }
@@ -316,61 +375,6 @@ const Editor: React.FC<EditorProps> = ({ socketRef, roomId, onCodeChange, langua
       editorRef.current.setOption("mode", getModeForLanguage(language.id));
     }
   }, [language]);
-  
-  // Extra effect to handle code changes with improved broadcasting
-  useEffect(() => {
-    if (!editorRef.current) return;
-    
-    const handleChange = (instance: Codemirror.Editor, changes: any) => {
-      // Exit early if we should ignore this change (from remote update)
-      if (ignoreChangeRef.current) {
-        return;
-      }
-
-      const { origin } = changes;
-      const code = instance.getValue();
-      
-      // Only handle local user input
-      if (origin === "input" || origin === "+input" || origin === "+delete") {
-        // Update parent component
-        onCodeChange(code);
-        previousCodeRef.current = code;
-        
-        // Throttle updates to reduce network traffic
-        const now = Date.now();
-        if (now - lastEventTimestamp > THROTTLE_MS && roomIdRef.current) {
-          setLastEventTimestamp(now);
-          
-          // Use socket for all communication since we can't use client events on public channels
-          if (socketRef.current) {
-            console.log("Sending code via socket.io");
-            socketRef.current.emit(ACTIONS.CODE_CHANGE, {
-              roomId: roomIdRef.current,
-              code,
-              author: username
-            });
-            
-            // Also emit the new CODE_BROADCAST event
-            socketRef.current.emit(ACTIONS.CODE_BROADCAST, {
-              roomId: roomIdRef.current,
-              code,
-              author: username
-            });
-          } else {
-            console.warn("No way to emit code change - local mode only");
-          }
-        }
-      }
-    };
-    
-    editorRef.current.on("change", handleChange);
-    
-    return () => {
-      if (editorRef.current) {
-        editorRef.current.off("change", handleChange);
-      }
-    };
-  }, [lastEventTimestamp, onCodeChange, socketRef, username]);
   
   return <textarea id="realtimeEditor"></textarea>;
 };

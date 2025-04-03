@@ -1,3 +1,4 @@
+
 import { io, Socket } from 'socket.io-client';
 import { v4 as uuidv4 } from 'uuid';
 import ACTIONS from './Actions';
@@ -19,8 +20,14 @@ if (typeof window !== 'undefined') {
       rooms: {},
       userSocketMap: {},
       roomCodeMap: {}, // Store code for each room
-      allUsers: {} // Track all users globally by username
+      allUsers: {}, // Track all users globally by username
+      globalRooms: {} // Global room state shared across tabs
     };
+  }
+  
+  // Make sure we have the globalRooms property
+  if (!(window as any).__mockData.globalRooms) {
+    (window as any).__mockData.globalRooms = {};
   }
 }
 
@@ -37,6 +44,17 @@ const getClientId = (): string => {
 // Get all connected clients in a room (for mock mode)
 const getAllConnectedClients = (roomId: string) => {
   const mockData = (window as any).__mockData;
+  
+  // Check the global rooms first
+  if (mockData.globalRooms[roomId]) {
+    const globalUsers = Object.values(mockData.globalRooms[roomId].users || {});
+    if (globalUsers.length > 0) {
+      console.log(`Found ${globalUsers.length} users in global room state for ${roomId}`);
+      return globalUsers;
+    }
+  }
+  
+  // Fall back to room-specific data
   if (!mockData.rooms[roomId]) return [];
   
   return Array.from(mockData.rooms[roomId] || []).map((socketId: string) => {
@@ -56,6 +74,22 @@ const setLocalUserData = (username: string, roomId: string) => {
       lastSeen: Date.now()
     };
     localStorage.setItem('userData', JSON.stringify(userData));
+    
+    // Also update the global room state
+    const mockData = (window as any).__mockData;
+    if (!mockData.globalRooms[roomId]) {
+      mockData.globalRooms[roomId] = { 
+        users: {}, 
+        code: mockData.roomCodeMap[roomId] || "",
+        createdAt: Date.now()
+      };
+    }
+    
+    mockData.globalRooms[roomId].users[username] = {
+      username,
+      socketId: `user-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      lastSeen: Date.now()
+    };
   } catch (err) {
     console.error("Error storing user data in localStorage", err);
   }
@@ -94,6 +128,11 @@ const createMockSocket = (): Socket => {
       // If this is a code change event, store it for future users
       if (event === ACTIONS.CODE_CHANGE || event === ACTIONS.CODE_BROADCAST) {
         mockData.roomCodeMap[roomId] = data.code;
+        
+        // Also update the global room state
+        if (mockData.globalRooms[roomId]) {
+          mockData.globalRooms[roomId].code = data.code;
+        }
       }
     }
   };
@@ -145,6 +184,21 @@ const createMockSocket = (): Socket => {
           socketId: mockSocketId,
           lastSeen: Date.now(),
           roomId
+        };
+        
+        // Update global room state
+        if (!mockData.globalRooms[roomId]) {
+          mockData.globalRooms[roomId] = { 
+            users: {}, 
+            code: mockData.roomCodeMap[roomId] || "",
+            createdAt: Date.now()
+          };
+        }
+        
+        mockData.globalRooms[roomId].users[validUsername] = {
+          username: validUsername,
+          socketId: mockSocketId,
+          lastSeen: Date.now()
         };
         
         // Add socket to room
@@ -246,6 +300,26 @@ const createMockSocket = (): Socket => {
               lastSeen: Date.now(),
               roomId
             };
+            
+            // Update global room state
+            if (!mockData.globalRooms[roomId]) {
+              mockData.globalRooms[roomId] = { 
+                users: {}, 
+                code: mockData.roomCodeMap[roomId] || "",
+                createdAt: Date.now()
+              };
+            }
+            
+            mockData.globalRooms[roomId].users[username] = {
+              username,
+              socketId: mockSocketId,
+              lastSeen: Date.now()
+            };
+          } else if (action === 'disconnected') {
+            // Update global room state
+            if (mockData.globalRooms[roomId] && mockData.globalRooms[roomId].users[username]) {
+              delete mockData.globalRooms[roomId].users[username];
+            }
           }
           
           // Broadcast to the room
@@ -258,12 +332,33 @@ const createMockSocket = (): Socket => {
             users: clients,
             count: clients.length
           }, false);
+          
+          // Also broadcast global room users
+          broadcastToRoom(roomId, ACTIONS.GLOBAL_ROOM_USERS, {
+            roomId,
+            users: Object.values(mockData.globalRooms[roomId]?.users || {})
+          }, false);
         }
       }
       
       // Handle JOIN_ROOM event
       if (event === ACTIONS.JOIN_ROOM && args[0]?.roomId) {
         const { roomId, username } = args[0];
+        
+        // Update global room state
+        if (!mockData.globalRooms[roomId]) {
+          mockData.globalRooms[roomId] = { 
+            users: {}, 
+            code: mockData.roomCodeMap[roomId] || "",
+            createdAt: Date.now()
+          };
+        }
+        
+        mockData.globalRooms[roomId].users[username] = {
+          username,
+          socketId: mockSocketId,
+          lastSeen: Date.now()
+        };
         
         broadcastToRoom(roomId, ACTIONS.JOIN_ROOM, args[0], false);
         
@@ -274,6 +369,12 @@ const createMockSocket = (): Socket => {
           users: clients,
           count: clients.length
         }, false);
+        
+        // Also broadcast global room users
+        broadcastToRoom(roomId, ACTIONS.GLOBAL_ROOM_USERS, {
+          roomId,
+          users: Object.values(mockData.globalRooms[roomId]?.users || {})
+        }, false);
       }
       
       // Handle CODE_CHANGE event
@@ -282,6 +383,11 @@ const createMockSocket = (): Socket => {
         
         // Store the code in the roomCodeMap
         mockData.roomCodeMap[roomId] = code;
+        
+        // Update global room state
+        if (mockData.globalRooms[roomId]) {
+          mockData.globalRooms[roomId].code = code;
+        }
         
         // Broadcast to all other clients in room
         setTimeout(() => {
@@ -320,8 +426,42 @@ const createMockSocket = (): Socket => {
         // Store the code in the roomCodeMap
         mockData.roomCodeMap[roomId] = code;
         
+        // Update global room state
+        if (!mockData.globalRooms[roomId]) {
+          mockData.globalRooms[roomId] = { 
+            users: {}, 
+            code: "",
+            createdAt: Date.now()
+          };
+        }
+        mockData.globalRooms[roomId].code = code;
+        
         // Broadcast to all clients in the room
         broadcastToRoom(roomId, ACTIONS.SYNC_RESPONSE, args[0], false);
+      }
+      
+      // Handle GLOBAL_SYNC_REQUEST event
+      if (event === ACTIONS.GLOBAL_SYNC_REQUEST && args[0]?.roomId) {
+        const { roomId, requestor } = args[0];
+        console.log(`Mock socket: Global sync request from ${requestor} for room ${roomId}`);
+        
+        // Get all users from global state
+        const globalUsers = Object.values(mockData.globalRooms[roomId]?.users || {});
+        
+        // Broadcast to all clients in the room
+        broadcastToRoom(roomId, ACTIONS.GLOBAL_ROOM_USERS, {
+          roomId,
+          users: globalUsers
+        }, false);
+        
+        // Also send the code if available
+        if (mockData.globalRooms[roomId]?.code) {
+          broadcastToRoom(roomId, ACTIONS.GLOBAL_SYNC_RESPONSE, {
+            roomId,
+            code: mockData.globalRooms[roomId].code,
+            author: 'system'
+          }, false);
+        }
       }
       
       return this;
@@ -381,6 +521,11 @@ const createMockSocket = (): Socket => {
             action: 'disconnected'
           }, true);
           
+          // Update global room state
+          if (mockData.globalRooms[roomId] && mockData.globalRooms[roomId].users[username]) {
+            delete mockData.globalRooms[roomId].users[username];
+          }
+          
           // Clean up empty rooms
           if (mockData.rooms[roomId].size === 0) {
             delete mockData.rooms[roomId];
@@ -392,6 +537,12 @@ const createMockSocket = (): Socket => {
               roomId,
               users: clients,
               count: clients.length
+            }, true);
+            
+            // Also broadcast global room users
+            broadcastToRoom(roomId, ACTIONS.GLOBAL_ROOM_USERS, {
+              roomId,
+              users: Object.values(mockData.globalRooms[roomId]?.users || {})
             }, true);
           }
         }

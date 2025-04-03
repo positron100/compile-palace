@@ -25,7 +25,13 @@ const ACTIONS = {
   
   // Fixed consistent naming for events
   ROOM_USERS: 'room-users',
-  CODE_BROADCAST: 'code-broadcast'
+  CODE_BROADCAST: 'code-broadcast',
+  
+  // Additional events for global state synchronization
+  GLOBAL_SYNC_REQUEST: 'global-sync-request',
+  GLOBAL_SYNC_RESPONSE: 'global-sync-response',
+  GLOBAL_USER_LIST: 'global-user-list',
+  GLOBAL_ROOM_USERS: 'global-room-users'
 };
 
 export default ACTIONS;

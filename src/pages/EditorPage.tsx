@@ -23,7 +23,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
-import pusher from "../pusher";
+import pusher, { syncGlobalRoomState, trackUserInRoom, getUsersInRoom } from "../pusher";
 import { getCleanLanguageName } from "../utils/languageUtils";
 
 function EditorPage() {
@@ -75,44 +75,57 @@ function EditorPage() {
     console.log("Updating clients list:", newClients, "Append:", append);
     
     setClients(prevClients => {
-      if (!append) {
-        const currentUserExists = newClients.some(client => 
-          client.username === username || client.socketId === 'local-user'
-        );
-        
-        if (!currentUserExists) {
-          return [
-            ...newClients,
-            { socketId: 'local-user', username: username }
-          ];
-        }
-        return newClients;
-      }
-      
-      const updatedClients = [...prevClients];
+      let updatedClients = append ? [...prevClients] : [];
       
       newClients.forEach(newClient => {
-        const exists = updatedClients.some(
-          client => (client.socketId === newClient.socketId) || 
-                   (client.username === newClient.username)
+        if (!newClient.username) return;
+        
+        const existingClientIndex = updatedClients.findIndex(
+          client => client.username === newClient.username
         );
         
-        if (!exists) {
-          updatedClients.push(newClient);
+        if (existingClientIndex >= 0) {
+          updatedClients[existingClientIndex] = {
+            ...updatedClients[existingClientIndex],
+            ...newClient,
+            lastSeen: Date.now()
+          };
+        } else {
+          updatedClients.push({
+            ...newClient,
+            lastSeen: Date.now()
+          });
         }
       });
       
-      const currentUserExists = updatedClients.some(client => 
-        client.username === username || client.socketId === 'local-user'
+      const currentUserExists = updatedClients.some(
+        client => client.username === username
       );
       
       if (!currentUserExists) {
-        updatedClients.push({ socketId: 'local-user', username: username });
+        updatedClients.push({ 
+          socketId: 'local-user', 
+          username: username,
+          lastSeen: Date.now()
+        });
       }
+      
+      updatedClients.sort((a, b) => a.username.localeCompare(b.username));
       
       return updatedClients;
     });
   }, [username]);
+
+  const syncUsersFromGlobalState = useCallback(() => {
+    if (!roomId) return;
+    
+    const roomUsers = getUsersInRoom(roomId);
+    console.log("Syncing users from global state for room:", roomId, roomUsers);
+    
+    if (roomUsers && roomUsers.length > 0) {
+      updateClientsList(roomUsers);
+    }
+  }, [roomId, updateClientsList]);
 
   const initPusher = useCallback(() => {
     if (!roomId) return null;
@@ -131,7 +144,16 @@ function EditorPage() {
         setSocketError(false);
         setConnectionStatus("Connected to Pusher");
         
-        updateClientsList([{ socketId: 'local-user', username: username }]);
+        const globalState = syncGlobalRoomState();
+        console.log("Synchronized global state:", globalState);
+        
+        syncUsersFromGlobalState();
+        
+        trackUserInRoom(roomId, { 
+          socketId: 'local-user', 
+          username: username,
+          lastSeen: Date.now() 
+        });
       };
       
       pusher.connection.bind('connected', handlePusherConnected);
@@ -144,7 +166,13 @@ function EditorPage() {
         console.log(`Successfully subscribed to public channel: ${channelName}`);
         setConnectionStatus("Subscribed to room channel");
         
-        updateClientsList([{ socketId: 'local-user', username: username }]);
+        trackUserInRoom(roomId, { 
+          socketId: 'local-user', 
+          username: username,
+          lastSeen: Date.now() 
+        });
+        
+        syncUsersFromGlobalState();
         
         channel.bind(ACTIONS.ROOM_USERS, (data) => {
           if (data && data.users) {
@@ -154,14 +182,20 @@ function EditorPage() {
         });
         
         channel.bind(ACTIONS.JOIN_ROOM, (data) => {
-          if (data && data.username && data.username !== username) {
+          if (data && data.username) {
             console.log(`${data.username} joined the room via server event`);
-            toast.success(`${data.username} joined the room`);
             
-            updateClientsList([{ 
-              socketId: `user-${Date.now()}-${Math.random().toString(36).slice(2)}`, 
-              username: data.username 
-            }], true);
+            if (data.username !== username) {
+              toast.success(`${data.username} joined the room`);
+            }
+            
+            trackUserInRoom(roomId, { 
+              socketId: data.socketId || `user-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+              username: data.username,
+              lastSeen: Date.now()
+            });
+            
+            syncUsersFromGlobalState();
           }
         });
         
@@ -169,24 +203,29 @@ function EditorPage() {
           if (data && data.username) {
             console.log(`Presence update from ${data.username}: ${data.action}`);
             
-            if (data.action === 'connected' && data.username !== username) {
-              updateClientsList([{ 
-                socketId: `user-${Date.now()}-${Math.random().toString(36).slice(2)}`, 
-                username: data.username 
-              }], true);
+            if (data.action === 'connected') {
+              trackUserInRoom(roomId, { 
+                socketId: data.socketId || `user-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+                username: data.username,
+                lastSeen: Date.now()
+              });
               
-              toast.success(`${data.username} is now online`);
+              if (data.username !== username) {
+                toast.success(`${data.username} is now online`);
+              }
             } else if (data.action === 'disconnected' && data.username !== username) {
               setClients(prev => prev.filter(client => client.username !== data.username));
               toast.info(`${data.username} disconnected`);
             }
+            
+            syncUsersFromGlobalState();
           }
         });
         
-        channel.bind(ACTIONS.CODE_BROADCAST, (data) => {
-          console.log("Received code broadcast event", data);
-          if (data && data.code) {
-            codeRef.current = data.code;
+        channel.bind(ACTIONS.GLOBAL_ROOM_USERS, (data) => {
+          if (data && data.users) {
+            console.log("Received global room users update:", data.users);
+            updateClientsList(data.users);
           }
         });
       });
@@ -202,7 +241,7 @@ function EditorPage() {
         setSocketError(true);
         setConnectionStatus("Channel subscription failed");
         
-        updateClientsList([{ socketId: 'local-user', username: username }]);
+        syncUsersFromGlobalState();
       });
       
       channel.bind('pusher:subscription_count', (data) => {
@@ -213,17 +252,8 @@ function EditorPage() {
         }
       });
       
-      channel.bind(ACTIONS.CODE_UPDATE, (data) => {
-        console.log("Received code update event from server", data);
-        if (data && data.code) {
-          codeRef.current = data.code;
-        }
-      });
-      
       setPusherChannel(channel);
       setInitialized(true);
-      
-      updateClientsList([{ socketId: 'local-user', username: username }]);
       
       return channel;
     } catch (error) {
@@ -233,10 +263,16 @@ function EditorPage() {
       setInitialized(true);
       toast.error("Failed to connect to Pusher, using local mode");
       
-      updateClientsList([{ socketId: 'local-user', username: username }]);
+      trackUserInRoom(roomId, { 
+        socketId: 'local-user', 
+        username: username,
+        lastSeen: Date.now() 
+      });
+      
+      syncUsersFromGlobalState();
       return null;
     }
-  }, [roomId, updateClientsList, username]);
+  }, [roomId, updateClientsList, username, syncUsersFromGlobalState]);
 
   useEffect(() => {
     if (!socketRef.current) {
@@ -291,12 +327,20 @@ function EditorPage() {
           });
           
           socket.on(ACTIONS.JOIN_ROOM, (data) => {
-            if (data && data.username && data.username !== username) {
-              updateClientsList([{ 
-                socketId: `user-${Date.now()}-${Math.random().toString(36).slice(2)}`, 
-                username: data.username 
-              }], true);
-              toast.success(`${data.username} joined the room`);
+            if (data && data.username) {
+              if (roomId) {
+                trackUserInRoom(roomId, { 
+                  socketId: data.socketId || `user-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+                  username: data.username,
+                  lastSeen: Date.now()
+                });
+              }
+              
+              syncUsersFromGlobalState();
+              
+              if (data.username !== username) {
+                toast.success(`${data.username} joined the room`);
+              }
             }
           });
           
@@ -307,17 +351,54 @@ function EditorPage() {
             }
           });
           
+          socket.on(ACTIONS.GLOBAL_ROOM_USERS, (data) => {
+            if (data && data.users) {
+              console.log("Received global room users update:", data.users);
+              updateClientsList(data.users);
+            }
+          });
+          
           socket.on(ACTIONS.PRESENCE_UPDATE_EVENT, (data) => {
-            if (data && data.username) {
-              if (data.action === 'connected' && data.username !== username) {
-                updateClientsList([{ 
-                  socketId: `user-${Date.now()}-${Math.random().toString(36).slice(2)}`, 
-                  username: data.username 
-                }], true);
-                toast.success(`${data.username} is now online`);
-              } else if (data.action === 'disconnected' && data.username !== username) {
-                setClients(prev => prev.filter(client => client.username !== data.username));
-                toast.info(`${data.username} disconnected`);
+            if (data && data.username && data.roomId === roomId) {
+              if (data.action === 'connected') {
+                trackUserInRoom(roomId, {
+                  socketId: data.socketId || `user-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+                  username: data.username,
+                  lastSeen: Date.now()
+                });
+                
+                syncUsersFromGlobalState();
+                
+                if (data.username !== username) {
+                  toast.success(`${data.username} is now online`);
+                }
+              } else if (data.action === 'disconnected') {
+                if (data.username !== username) {
+                  setClients(prev => prev.filter(client => client.username !== data.username));
+                  toast.info(`${data.username} disconnected`);
+                }
+              }
+            }
+          });
+          
+          socket.on(ACTIONS.GLOBAL_SYNC_REQUEST, (data) => {
+            if (data && data.roomId === roomId) {
+              console.log("Received global sync request from:", data.requestor);
+              
+              const roomUsers = getUsersInRoom(roomId);
+              
+              socket.emit(ACTIONS.GLOBAL_ROOM_USERS, {
+                roomId,
+                users: roomUsers,
+                requestor: username
+              });
+              
+              if (codeRef && codeRef.current) {
+                socket.emit(ACTIONS.GLOBAL_SYNC_RESPONSE, {
+                  roomId,
+                  code: codeRef.current,
+                  author: username
+                });
               }
             }
           });
@@ -327,27 +408,44 @@ function EditorPage() {
               roomId,
               username: location.state?.username || 'Anonymous'
             });
+            
+            socket.emit(ACTIONS.JOIN_ROOM, {
+              roomId,
+              username: location.state?.username || 'Anonymous',
+              timestamp: Date.now()
+            });
           }
         }
         
-        updateClientsList([{ socketId: 'local-user', username: username }]);
+        trackUserInRoom(roomId, { 
+          socketId: 'local-user', 
+          username, 
+          lastSeen: Date.now() 
+        });
+        
+        syncUsersFromGlobalState();
       }).catch(err => {
         console.error("Socket init error:", err);
         
-        updateClientsList([{ socketId: 'local-user', username: username }]);
+        trackUserInRoom(roomId, { 
+          socketId: 'local-user', 
+          username, 
+          lastSeen: Date.now() 
+        });
+        
+        syncUsersFromGlobalState();
       });
     }
     
     const channel = initPusher();
     
-    setTimeout(() => {
-      if (clients.length === 0) {
-        console.log("No clients detected after timeout, ensuring local user is visible");
-        updateClientsList([{ socketId: 'local-user', username: username }]);
-      }
-    }, 1000);
+    const syncInterval = setInterval(() => {
+      syncUsersFromGlobalState();
+    }, 5000);
     
     return () => {
+      clearInterval(syncInterval);
+      
       if (channel) {
         console.log("Cleaning up Pusher connection");
         channel.unbind_all();
@@ -360,7 +458,7 @@ function EditorPage() {
         socketRef.current = null;
       }
     };
-  }, [initPusher, roomId, updateClientsList, clients.length, location.state?.username, username]);
+  }, [initPusher, roomId, updateClientsList, location.state?.username, username, syncUsersFromGlobalState]);
 
   useEffect(() => {
     if (initialized && !location.state?.username) {
@@ -415,7 +513,7 @@ function EditorPage() {
           <div className="flex flex-wrap gap-3">
             {clients.map((client) => (
               <Client 
-                key={client.socketId} 
+                key={client.socketId || client.username} 
                 username={client.username} 
                 socketId={client.socketId} 
               />
