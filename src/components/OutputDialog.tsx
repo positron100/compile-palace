@@ -1,12 +1,13 @@
 
-import React, { useRef, useState } from 'react';
+import React, { useState } from 'react';
 import {
   Dialog,
   DialogContent,
+  DialogHeader,
   DialogTitle,
-  DialogDescription
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { Maximize2, Minimize2 } from 'lucide-react';
 import OutputSection from './OutputSection';
 
 interface OutputDialogProps {
@@ -21,7 +22,6 @@ const OutputDialog: React.FC<OutputDialogProps> = ({
   outputDetails
 }) => {
   const [fullScreen, setFullScreen] = useState(false);
-  const dialogRef = useRef(null);
 
   const toggleFullScreen = () => {
     setFullScreen(!fullScreen);
@@ -30,30 +30,24 @@ const OutputDialog: React.FC<OutputDialogProps> = ({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className={`max-w-4xl p-0 gap-0 ${fullScreen ? 'w-[90vw] h-[90vh]' : ''}`}
-        ref={dialogRef}
-        aria-describedby="output-dialog-description"
+        className={`${fullScreen ? 'w-[90vw] h-[90vh]' : 'max-w-4xl'} p-0 overflow-hidden`}
       >
-        <DialogTitle className="p-4 text-lg font-semibold border-b">
-          Output
-        </DialogTitle>
-        <DialogDescription id="output-dialog-description" className="sr-only">
-          Code execution results including output, errors and metrics
-        </DialogDescription>
-        
-        <div className={`p-0 relative overflow-auto ${fullScreen ? 'h-full' : 'max-h-[70vh]'}`}>
-          <OutputSection outputDetails={outputDetails} />
-          
-          <div className="absolute top-2 right-2">
+        <DialogHeader className="p-4 border-b bg-gradient-to-r from-purple-50 to-white">
+          <div className="flex justify-between items-center">
+            <DialogTitle>Execution Results</DialogTitle>
             <Button
-              variant="outline"
-              size="sm"
+              variant="ghost"
+              size="icon"
               onClick={toggleFullScreen}
-              className="text-xs"
+              className="h-8 w-8"
             >
-              {fullScreen ? 'Exit Full Screen' : 'Full Screen'}
+              {fullScreen ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
             </Button>
           </div>
+        </DialogHeader>
+        
+        <div className={`p-4 overflow-auto ${fullScreen ? 'h-[calc(90vh-64px)]' : 'max-h-[70vh]'}`}>
+          <OutputSection outputDetails={outputDetails} />
         </div>
       </DialogContent>
     </Dialog>
