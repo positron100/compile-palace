@@ -505,8 +505,7 @@ function EditorPage() {
         <Button 
           variant="outline"
           className="w-full bg-white border-purple-200 text-purple-700 hover:bg-purple-50 hover:text-purple-800 flex items-center gap-2 transition-all"
-          onClick={() => copyRoomId()}
-          type="button"
+          onClick={copyRoomId}
         >
           <Copy size={16} />
           Copy Room ID
@@ -514,8 +513,7 @@ function EditorPage() {
         <Button 
           variant="outline"
           className="w-full bg-white border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700 flex items-center gap-2 transition-all"
-          onClick={() => leaveRoom()}
-          type="button"
+          onClick={leaveRoom}
         >
           <LogOut size={16} />
           Leave Room
