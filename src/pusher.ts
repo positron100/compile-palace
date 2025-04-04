@@ -90,6 +90,9 @@ pusher.connection.bind('connected', () => {
   
   // Synchronize room state on connection
   syncGlobalRoomState();
+  
+  // Emit custom event for components to react to connection
+  document.dispatchEvent(new CustomEvent('pusher:connected'));
 });
 
 pusher.connection.bind('unavailable', () => {
@@ -179,6 +182,28 @@ export const trackUserInRoom = (roomId: string, userData: any) => {
   // Broadcast state change to other tabs
   broadcastRoomStateUpdate();
   
+  // Also notify any Pusher channels for this room about the user update
+  try {
+    const channelName = `collab-${roomId}`;
+    const channel = pusher.channel(channelName);
+    
+    if (channel) {
+      // Use trigger for public channels
+      channel.trigger('presence-update', {
+        clients: connectedUsers[roomId],
+        count: connectedUsers[roomId].length
+      });
+      
+      // Also use the room users event
+      channel.trigger('room-users', {
+        users: connectedUsers[roomId],
+        count: connectedUsers[roomId].length
+      });
+    }
+  } catch (err) {
+    console.error('Failed to notify channel about user update', err);
+  }
+  
   return connectedUsers[roomId];
 };
 
@@ -200,6 +225,28 @@ export const removeUserFromRoom = (roomId: string, username: string) => {
     broadcastRoomStateUpdate();
   }
   
+  // Also notify any Pusher channels for this room about the user update
+  try {
+    const channelName = `collab-${roomId}`;
+    const channel = pusher.channel(channelName);
+    
+    if (channel) {
+      // Use trigger for public channels
+      channel.trigger('presence-update', {
+        clients: connectedUsers[roomId] || [],
+        count: (connectedUsers[roomId] || []).length
+      });
+      
+      // Also use the room users event
+      channel.trigger('room-users', {
+        users: connectedUsers[roomId] || [],
+        count: (connectedUsers[roomId] || []).length
+      });
+    }
+  } catch (err) {
+    console.error('Failed to notify channel about user removal', err);
+  }
+  
   return connectedUsers[roomId] || [];
 };
 
@@ -212,7 +259,7 @@ export const getUsersInRoom = (roomId: string) => {
   if (roomUsers.length === 0) {
     const globalState = (window as any).__roomState;
     if (globalState.rooms[roomId]) {
-      const globalUsers = Object.values(globalState.rooms[roomId].users);
+      const globalUsers = Object.values(globalState.rooms[roomId].users || {});
       if (globalUsers.length > 0) {
         // Update local cache
         connectedUsers[roomId] = globalUsers as any[];
@@ -258,12 +305,41 @@ export const updateRoomCode = (roomId: string, code: string) => {
   
   // Broadcast state change to other tabs
   broadcastRoomStateUpdate();
+  
+  // Also notify any Pusher channels for this room about the code update
+  try {
+    const channelName = `collab-${roomId}`;
+    const channel = pusher.channel(channelName);
+    
+    if (channel) {
+      // Use trigger for public channels
+      channel.trigger('room-code-update', {
+        code,
+        author: 'system'
+      });
+    }
+  } catch (err) {
+    console.error('Failed to notify channel about code update', err);
+  }
 };
 
 // Get code for a specific room from global state
 export const getRoomCode = (roomId: string) => {
   const globalState = (window as any).__roomState;
   return globalState.rooms[roomId]?.code || "";
+};
+
+// Get a Pusher channel (useful for checking if a channel exists)
+export const getPusherChannel = (channelName: string) => {
+  return pusher.channel(channelName);
+};
+
+// Force the pusher client to reconnect
+export const reconnectPusher = () => {
+  pusher.disconnect();
+  setTimeout(() => {
+    pusher.connect();
+  }, 500);
 };
 
 export default pusher;

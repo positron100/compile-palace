@@ -36,7 +36,12 @@ const ACTIONS = {
   // Consistent event naming 
   ROOM_CODE_UPDATE: 'room-code-update',
   USER_PRESENCE_CHANGE: 'user-presence-change',
-  CHANNEL_SUBSCRIPTION_COUNT: 'channel-subscription-count'
+  CHANNEL_SUBSCRIPTION_COUNT: 'channel-subscription-count',
+  
+  // New events for improved real-time collaboration
+  CLIENT_READY: 'client-ready',
+  PUSHER_CONNECTED: 'pusher-connected',
+  FORCE_SYNC: 'force-sync'
 };
 
 export default ACTIONS;
