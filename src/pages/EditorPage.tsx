@@ -446,7 +446,7 @@ function EditorPage() {
     }
   }, [initialized, location.state?.username, reactNavigator]);
 
-  async function copyRoomId() {
+  const copyRoomId = async () => {
     try {
       await navigator.clipboard.writeText(roomId || "");
       toast.success("Room ID copied to clipboard");
@@ -454,9 +454,9 @@ function EditorPage() {
       toast.error("Could not copy Room ID");
       console.error(err);
     }
-  }
+  };
 
-  async function leaveRoom() {
+  const leaveRoom = () => {
     if (pusherChannel) {
       pusherChannel.unbind_all();
       pusher.unsubscribe(`collab-${roomId}`);
@@ -467,7 +467,7 @@ function EditorPage() {
     }
     
     reactNavigator("/");
-  }
+  };
 
   const SidebarContent = () => (
     <>
@@ -484,28 +484,29 @@ function EditorPage() {
       
       <div className="mb-8">
         <h3 className="font-semibold text-gray-700 mb-3">Connected Users ({clients.length})</h3>
-        {clients.length > 0 ? (
-          <div className="flex flex-wrap gap-3">
-            {clients.map((client) => (
+        <div className="flex flex-wrap gap-3 min-h-16">
+          {clients.length > 0 ? (
+            clients.map((client) => (
               <Client 
                 key={client.socketId || client.username} 
                 username={client.username} 
                 socketId={client.socketId} 
               />
-            ))}
-          </div>
-        ) : (
-          <div className="text-sm text-purple-400 italic">
-            {initialized ? "No users connected yet..." : "Connecting..."}
-          </div>
-        )}
+            ))
+          ) : (
+            <div className="text-sm text-purple-400 italic">
+              {initialized ? "No users connected yet..." : "Connecting..."}
+            </div>
+          )}
+        </div>
       </div>
       
       <div className="mt-auto space-y-3">
         <Button 
           variant="outline"
           className="w-full bg-white border-purple-200 text-purple-700 hover:bg-purple-50 hover:text-purple-800 flex items-center gap-2 transition-all"
-          onClick={copyRoomId}
+          onClick={() => copyRoomId()}
+          type="button"
         >
           <Copy size={16} />
           Copy Room ID
@@ -513,7 +514,8 @@ function EditorPage() {
         <Button 
           variant="outline"
           className="w-full bg-white border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700 flex items-center gap-2 transition-all"
-          onClick={leaveRoom}
+          onClick={() => leaveRoom()}
+          type="button"
         >
           <LogOut size={16} />
           Leave Room
@@ -618,7 +620,7 @@ function EditorPage() {
                   "--i": Math.random() * 10 + 1,
                   "--j": Math.random() * 7 + 1,
                 } as React.CSSProperties}
-                className="bg-indigo-500/20 absolute list-none rounded-lg animate-float"
+                className="bg-indigo-500/20 absolute list-none rounded-lg"
               />
             ))}
           </ul>

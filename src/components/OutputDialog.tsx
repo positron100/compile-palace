@@ -5,9 +5,10 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogClose,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Maximize2, Minimize2 } from 'lucide-react';
+import { Maximize2, Minimize2, X } from 'lucide-react';
 import OutputSection from './OutputSection';
 
 interface OutputDialogProps {
@@ -35,14 +36,21 @@ const OutputDialog: React.FC<OutputDialogProps> = ({
         <DialogHeader className="p-4 border-b bg-gradient-to-r from-purple-50 to-white">
           <div className="flex justify-between items-center">
             <DialogTitle>Execution Results</DialogTitle>
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={toggleFullScreen}
-              className="h-8 w-8"
-            >
-              {fullScreen ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={toggleFullScreen}
+                className="h-8 w-8"
+              >
+                {fullScreen ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
+              </Button>
+              <DialogClose asChild>
+                <Button variant="ghost" size="icon" className="h-8 w-8">
+                  <X size={16} />
+                </Button>
+              </DialogClose>
+            </div>
           </div>
         </DialogHeader>
         

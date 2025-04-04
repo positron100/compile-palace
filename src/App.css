@@ -25,7 +25,7 @@
   width: calc(10px + var(--i) * 10px);
   height: calc(10px + var(--i) * 10px);
   background: rgba(103, 58, 183, 0.1);
-  animation: float calc(15s / var(--i)) linear infinite;
+  animation: float calc(30s / var(--i)) linear infinite;
   bottom: calc(-100px - var(--i) * 10px);
   left: calc(var(--j) * 10%);
   border-radius: 8px;
