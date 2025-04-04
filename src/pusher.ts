@@ -34,13 +34,38 @@ export const getChannelType = (channelName: string): 'public' | 'private' | 'pre
 // Store global list of all connected users by room
 const connectedUsers: Record<string, any[]> = {};
 
-// Global room state for sharing across tabs/sessions
-if (typeof window !== 'undefined' && !(window as any).__roomState) {
-  (window as any).__roomState = {
-    rooms: {},
-    users: {},
-    lastSync: 0
-  };
+// Create a shared global state object for cross-tab communication
+if (typeof window !== 'undefined') {
+  if (!(window as any).__roomState) {
+    (window as any).__roomState = {
+      rooms: {},
+      users: {},
+      lastSync: 0
+    };
+  }
+  
+  // Create a channel for cross-tab communication
+  if (typeof BroadcastChannel !== 'undefined' && !(window as any).__roomChannel) {
+    try {
+      (window as any).__roomChannel = new BroadcastChannel('room-sync-channel');
+      
+      // Listen for updates from other tabs
+      (window as any).__roomChannel.onmessage = (event: MessageEvent) => {
+        if (event.data && event.data.type === 'ROOM_STATE_UPDATE') {
+          // Merge the received state with our local state
+          const receivedState = event.data.state;
+          const localState = (window as any).__roomState;
+          
+          if (receivedState.lastSync > localState.lastSync) {
+            console.log('Received newer room state from another tab', receivedState);
+            (window as any).__roomState = receivedState;
+          }
+        }
+      };
+    } catch (err) {
+      console.error('Failed to create BroadcastChannel for cross-tab sync', err);
+    }
+  }
 }
 
 // Initialize Pusher with your app key and cluster
@@ -48,7 +73,6 @@ const pusher = new Pusher("8ff9dd9dd0d8fd5a50a7", {
   cluster: "ap2",
   forceTLS: true,
   enabledTransports: ['ws', 'wss']
-  // No authorizer needed for public channels
 });
 
 // Enable debug logging in development mode
@@ -90,15 +114,32 @@ pusher.connection.bind('error', (err) => {
   console.error('Pusher connection error:', err);
 });
 
+// Broadcast room state changes to other tabs
+const broadcastRoomStateUpdate = () => {
+  if (typeof window !== 'undefined' && (window as any).__roomChannel) {
+    try {
+      (window as any).__roomChannel.postMessage({
+        type: 'ROOM_STATE_UPDATE',
+        state: (window as any).__roomState
+      });
+    } catch (err) {
+      console.error('Failed to broadcast room state update', err);
+    }
+  }
+};
+
 // Helper to track users by room
 export const trackUserInRoom = (roomId: string, userData: any) => {
   if (!connectedUsers[roomId]) {
     connectedUsers[roomId] = [];
   }
   
+  // Ensure we have a valid username
+  const username = userData.username || 'Anonymous';
+  
   // Check if user already exists
   const existingUserIndex = connectedUsers[roomId].findIndex(
-    user => user.username === userData.username
+    user => user.username === username
   );
   
   if (existingUserIndex >= 0) {
@@ -112,6 +153,7 @@ export const trackUserInRoom = (roomId: string, userData: any) => {
     // Add new user
     connectedUsers[roomId].push({
       ...userData,
+      username, // Ensure username is included
       lastSeen: Date.now()
     });
   }
@@ -126,12 +168,16 @@ export const trackUserInRoom = (roomId: string, userData: any) => {
     };
   }
   
-  globalState.rooms[roomId].users[userData.username] = {
+  globalState.rooms[roomId].users[username] = {
     ...userData,
+    username, // Ensure username is included
     lastSeen: Date.now()
   };
   
   globalState.lastSync = Date.now();
+  
+  // Broadcast state change to other tabs
+  broadcastRoomStateUpdate();
   
   return connectedUsers[roomId];
 };
@@ -149,6 +195,9 @@ export const removeUserFromRoom = (roomId: string, username: string) => {
   if (globalState.rooms[roomId] && globalState.rooms[roomId].users[username]) {
     delete globalState.rooms[roomId].users[username];
     globalState.lastSync = Date.now();
+    
+    // Broadcast state change to other tabs
+    broadcastRoomStateUpdate();
   }
   
   return connectedUsers[roomId] || [];
@@ -157,7 +206,7 @@ export const removeUserFromRoom = (roomId: string, username: string) => {
 // Get all users in a room
 export const getUsersInRoom = (roomId: string) => {
   // Try to get from memory first
-  const roomUsers = connectedUsers[roomId] || [];
+  let roomUsers = connectedUsers[roomId] || [];
   
   // If empty, try to get from global state
   if (roomUsers.length === 0) {
@@ -165,8 +214,9 @@ export const getUsersInRoom = (roomId: string) => {
     if (globalState.rooms[roomId]) {
       const globalUsers = Object.values(globalState.rooms[roomId].users);
       if (globalUsers.length > 0) {
+        // Update local cache
         connectedUsers[roomId] = globalUsers as any[];
-        return globalUsers as any[];
+        roomUsers = globalUsers as any[];
       }
     }
   }
@@ -205,6 +255,9 @@ export const updateRoomCode = (roomId: string, code: string) => {
   
   globalState.rooms[roomId].code = code;
   globalState.lastSync = Date.now();
+  
+  // Broadcast state change to other tabs
+  broadcastRoomStateUpdate();
 };
 
 // Get code for a specific room from global state

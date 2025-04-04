@@ -23,8 +23,15 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
-import pusher, { syncGlobalRoomState, trackUserInRoom, getUsersInRoom } from "../pusher";
+import pusher, { syncGlobalRoomState } from "../pusher";
 import { getCleanLanguageName } from "../utils/languageUtils";
+import userService from "../services/userService";
+import { 
+  Dialog, 
+  DialogTitle, 
+  DialogDescription,
+  DialogContent 
+} from "@/components/ui/dialog";
 
 function EditorPage() {
   const socketRef = useRef(null);
@@ -119,7 +126,7 @@ function EditorPage() {
   const syncUsersFromGlobalState = useCallback(() => {
     if (!roomId) return;
     
-    const roomUsers = getUsersInRoom(roomId);
+    const roomUsers = userService.getRoomUsers(roomId);
     console.log("Syncing users from global state for room:", roomId, roomUsers);
     
     if (roomUsers && roomUsers.length > 0) {
@@ -149,11 +156,7 @@ function EditorPage() {
         
         syncUsersFromGlobalState();
         
-        trackUserInRoom(roomId, { 
-          socketId: 'local-user', 
-          username: username,
-          lastSeen: Date.now() 
-        });
+        userService.syncUserPresence(roomId, username);
       };
       
       pusher.connection.bind('connected', handlePusherConnected);
@@ -166,12 +169,7 @@ function EditorPage() {
         console.log(`Successfully subscribed to public channel: ${channelName}`);
         setConnectionStatus("Subscribed to room channel");
         
-        trackUserInRoom(roomId, { 
-          socketId: 'local-user', 
-          username: username,
-          lastSeen: Date.now() 
-        });
-        
+        userService.syncUserPresence(roomId, username);
         syncUsersFromGlobalState();
         
         channel.bind(ACTIONS.ROOM_USERS, (data) => {
@@ -189,12 +187,7 @@ function EditorPage() {
               toast.success(`${data.username} joined the room`);
             }
             
-            trackUserInRoom(roomId, { 
-              socketId: data.socketId || `user-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-              username: data.username,
-              lastSeen: Date.now()
-            });
-            
+            userService.syncUserPresence(roomId, username);
             syncUsersFromGlobalState();
           }
         });
@@ -204,21 +197,17 @@ function EditorPage() {
             console.log(`Presence update from ${data.username}: ${data.action}`);
             
             if (data.action === 'connected') {
-              trackUserInRoom(roomId, { 
-                socketId: data.socketId || `user-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-                username: data.username,
-                lastSeen: Date.now()
-              });
+              userService.syncUserPresence(roomId, username);
               
               if (data.username !== username) {
                 toast.success(`${data.username} is now online`);
               }
+              
+              syncUsersFromGlobalState();
             } else if (data.action === 'disconnected' && data.username !== username) {
               setClients(prev => prev.filter(client => client.username !== data.username));
               toast.info(`${data.username} disconnected`);
             }
-            
-            syncUsersFromGlobalState();
           }
         });
         
@@ -228,6 +217,33 @@ function EditorPage() {
             updateClientsList(data.users);
           }
         });
+        
+        channel.bind(ACTIONS.PRESENCE_UPDATE, (data) => {
+          if (data && data.clients) {
+            updateClientsList(data.clients);
+          }
+        });
+        
+        channel.bind('pusher:subscription_error', (error) => {
+          console.error("Public channel subscription error:", error);
+          setSocketError(true);
+          setConnectionStatus("Channel subscription failed");
+          
+          syncUsersFromGlobalState();
+        });
+        
+        channel.bind('pusher:subscription_count', (data) => {
+          console.log("Subscription count updated:", data);
+          
+          if (data && data.subscription_count && data.subscription_count > 0) {
+            setSubscriptionCount(data.subscription_count);
+          }
+        });
+      
+        setPusherChannel(channel);
+        setInitialized(true);
+        
+        return channel;
       });
       
       channel.bind(ACTIONS.PRESENCE_UPDATE, (data) => {
@@ -263,12 +279,7 @@ function EditorPage() {
       setInitialized(true);
       toast.error("Failed to connect to Pusher, using local mode");
       
-      trackUserInRoom(roomId, { 
-        socketId: 'local-user', 
-        username: username,
-        lastSeen: Date.now() 
-      });
-      
+      userService.syncUserPresence(roomId, username);
       syncUsersFromGlobalState();
       return null;
     }
@@ -277,164 +288,131 @@ function EditorPage() {
   useEffect(() => {
     if (!socketRef.current) {
       console.log("Initializing socket connection");
-      initSocket().then(socket => {
-        socketRef.current = socket;
-        
-        if (socket) {
-          socket.on(ACTIONS.JOINED, ({ clients, username, socketId }) => {
-            console.log(`${username} joined the room`);
-            
-            if (username !== location.state?.username) {
-              toast.success(`${username} joined the room`);
-            }
-            
-            updateClientsList(clients);
-          });
+      
+      userService.connectToRoom(roomId, username)
+        .then(socket => {
+          socketRef.current = socket;
           
-          socket.on(ACTIONS.DISCONNECTED, ({ socketId, username }) => {
-            console.log(`${username} left the room`);
-            toast.info(`${username} left the room`);
-            
-            setClients(prev => prev.filter(client => client.socketId !== socketId));
-          });
-          
-          socket.on(ACTIONS.CODE_CHANGE, (data) => {
-            if (data && data.code) {
-              codeRef.current = data.code;
-            }
-          });
-          
-          socket.on(ACTIONS.CODE_BROADCAST, (data) => {
-            if (data && data.code) {
-              codeRef.current = data.code;
-            }
-          });
-          
-          socket.on(ACTIONS.SYNC_REQUEST, (data) => {
-            if (codeRef && codeRef.current) {
-              socket.emit(ACTIONS.SYNC_RESPONSE, {
-                roomId,
-                code: codeRef.current,
-                author: username
-              });
-            }
-          });
-          
-          socket.on(ACTIONS.SYNC_RESPONSE, (data) => {
-            if (data && data.code) {
-              codeRef.current = data.code;
-            }
-          });
-          
-          socket.on(ACTIONS.JOIN_ROOM, (data) => {
-            if (data && data.username) {
-              if (roomId) {
-                trackUserInRoom(roomId, { 
-                  socketId: data.socketId || `user-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-                  username: data.username,
-                  lastSeen: Date.now()
-                });
+          if (socket) {
+            socket.on(ACTIONS.JOINED, ({ clients, username: joinedUser, socketId }) => {
+              console.log(`${joinedUser} joined the room`);
+              
+              if (joinedUser !== username) {
+                toast.success(`${joinedUser} joined the room`);
               }
               
-              syncUsersFromGlobalState();
+              updateClientsList(clients);
+            });
+            
+            socket.on(ACTIONS.DISCONNECTED, ({ socketId, username: leftUser }) => {
+              console.log(`${leftUser} left the room`);
+              toast.info(`${leftUser} left the room`);
               
-              if (data.username !== username) {
-                toast.success(`${data.username} joined the room`);
+              setClients(prev => prev.filter(client => client.socketId !== socketId));
+            });
+            
+            socket.on(ACTIONS.CODE_CHANGE, (data) => {
+              if (data && data.code) {
+                codeRef.current = data.code;
               }
-            }
-          });
-          
-          socket.on(ACTIONS.ROOM_USERS, (data) => {
-            if (data && data.users) {
-              console.log("Received room users update:", data.users);
-              updateClientsList(data.users);
-            }
-          });
-          
-          socket.on(ACTIONS.GLOBAL_ROOM_USERS, (data) => {
-            if (data && data.users) {
-              console.log("Received global room users update:", data.users);
-              updateClientsList(data.users);
-            }
-          });
-          
-          socket.on(ACTIONS.PRESENCE_UPDATE_EVENT, (data) => {
-            if (data && data.username && data.roomId === roomId) {
-              if (data.action === 'connected') {
-                trackUserInRoom(roomId, {
-                  socketId: data.socketId || `user-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-                  username: data.username,
-                  lastSeen: Date.now()
-                });
-                
-                syncUsersFromGlobalState();
-                
-                if (data.username !== username) {
-                  toast.success(`${data.username} is now online`);
-                }
-              } else if (data.action === 'disconnected') {
-                if (data.username !== username) {
-                  setClients(prev => prev.filter(client => client.username !== data.username));
-                  toast.info(`${data.username} disconnected`);
-                }
+            });
+            
+            socket.on(ACTIONS.CODE_BROADCAST, (data) => {
+              if (data && data.code) {
+                codeRef.current = data.code;
               }
-            }
-          });
-          
-          socket.on(ACTIONS.GLOBAL_SYNC_REQUEST, (data) => {
-            if (data && data.roomId === roomId) {
-              console.log("Received global sync request from:", data.requestor);
-              
-              const roomUsers = getUsersInRoom(roomId);
-              
-              socket.emit(ACTIONS.GLOBAL_ROOM_USERS, {
-                roomId,
-                users: roomUsers,
-                requestor: username
-              });
-              
+            });
+            
+            socket.on(ACTIONS.SYNC_REQUEST, (data) => {
               if (codeRef && codeRef.current) {
-                socket.emit(ACTIONS.GLOBAL_SYNC_RESPONSE, {
+                socket.emit(ACTIONS.SYNC_RESPONSE, {
                   roomId,
                   code: codeRef.current,
                   author: username
                 });
               }
-            }
-          });
-          
-          if (roomId) {
-            socket.emit(ACTIONS.JOIN, {
-              roomId,
-              username: location.state?.username || 'Anonymous'
             });
             
-            socket.emit(ACTIONS.JOIN_ROOM, {
-              roomId,
-              username: location.state?.username || 'Anonymous',
-              timestamp: Date.now()
+            socket.on(ACTIONS.SYNC_RESPONSE, (data) => {
+              if (data && data.code) {
+                codeRef.current = data.code;
+              }
+            });
+            
+            socket.on(ACTIONS.JOIN_ROOM, (data) => {
+              if (data && data.username) {
+                if (roomId) {
+                  userService.syncUserPresence(roomId, data.username);
+                }
+                
+                syncUsersFromGlobalState();
+                
+                if (data.username !== username) {
+                  toast.success(`${data.username} joined the room`);
+                }
+              }
+            });
+            
+            socket.on(ACTIONS.ROOM_USERS, (data) => {
+              if (data && data.users) {
+                console.log("Received room users update:", data.users);
+                updateClientsList(data.users);
+              }
+            });
+            
+            socket.on(ACTIONS.GLOBAL_ROOM_USERS, (data) => {
+              if (data && data.users) {
+                console.log("Received global room users update:", data.users);
+                updateClientsList(data.users);
+              }
+            });
+            
+            socket.on(ACTIONS.PRESENCE_UPDATE_EVENT, (data) => {
+              if (data && data.username && data.roomId === roomId) {
+                if (data.action === 'connected') {
+                  userService.syncUserPresence(roomId, data.username);
+                  syncUsersFromGlobalState();
+                  
+                  if (data.username !== username) {
+                    toast.success(`${data.username} is now online`);
+                  }
+                } else if (data.action === 'disconnected') {
+                  if (data.username !== username) {
+                    setClients(prev => prev.filter(client => client.username !== data.username));
+                    toast.info(`${data.username} disconnected`);
+                  }
+                }
+              }
+            });
+            
+            socket.on(ACTIONS.GLOBAL_SYNC_REQUEST, (data) => {
+              if (data && data.roomId === roomId) {
+                console.log("Received global sync request from:", data.requestor);
+                
+                const roomUsers = userService.getRoomUsers(roomId);
+                
+                socket.emit(ACTIONS.GLOBAL_ROOM_USERS, {
+                  roomId,
+                  users: roomUsers,
+                  requestor: username
+                });
+                
+                if (codeRef && codeRef.current) {
+                  socket.emit(ACTIONS.GLOBAL_SYNC_RESPONSE, {
+                    roomId,
+                    code: codeRef.current,
+                    author: username
+                  });
+                }
+              }
             });
           }
-        }
-        
-        trackUserInRoom(roomId, { 
-          socketId: 'local-user', 
-          username, 
-          lastSeen: Date.now() 
+        })
+        .catch(err => {
+          console.error("Socket initialization error:", err);
+          userService.syncUserPresence(roomId, username);
+          syncUsersFromGlobalState();
         });
-        
-        syncUsersFromGlobalState();
-      }).catch(err => {
-        console.error("Socket init error:", err);
-        
-        trackUserInRoom(roomId, { 
-          socketId: 'local-user', 
-          username, 
-          lastSeen: Date.now() 
-        });
-        
-        syncUsersFromGlobalState();
-      });
     }
     
     const channel = initPusher();
@@ -454,11 +432,11 @@ function EditorPage() {
       
       if (socketRef.current) {
         console.log("Cleaning up socket connection");
-        socketRef.current.disconnect();
+        userService.disconnectFromRoom(roomId, username, socketRef.current);
         socketRef.current = null;
       }
     };
-  }, [initPusher, roomId, updateClientsList, location.state?.username, username, syncUsersFromGlobalState]);
+  }, [initPusher, roomId, updateClientsList, username, syncUsersFromGlobalState]);
 
   useEffect(() => {
     if (initialized && !location.state?.username) {
@@ -485,10 +463,7 @@ function EditorPage() {
     }
     
     if (socketRef.current) {
-      if (roomId) {
-        socketRef.current.emit(ACTIONS.LEAVE, { roomId });
-      }
-      socketRef.current.disconnect();
+      userService.disconnectFromRoom(roomId, username, socketRef.current);
     }
     
     reactNavigator("/");

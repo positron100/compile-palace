@@ -31,7 +31,12 @@ const ACTIONS = {
   GLOBAL_SYNC_REQUEST: 'global-sync-request',
   GLOBAL_SYNC_RESPONSE: 'global-sync-response',
   GLOBAL_USER_LIST: 'global-user-list',
-  GLOBAL_ROOM_USERS: 'global-room-users'
+  GLOBAL_ROOM_USERS: 'global-room-users',
+  
+  // Consistent event naming 
+  ROOM_CODE_UPDATE: 'room-code-update',
+  USER_PRESENCE_CHANGE: 'user-presence-change',
+  CHANNEL_SUBSCRIPTION_COUNT: 'channel-subscription-count'
 };
 
 export default ACTIONS;
