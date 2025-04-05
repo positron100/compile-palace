@@ -1,8 +1,8 @@
 
-import React, { useRef, useCallback, memo } from "react";
+import React, { useRef, useCallback, memo, useEffect } from "react";
 import { useEditorSetup } from "../hooks/useEditorSetup";
 import { useCollaboration } from "../hooks/useCollaboration";
-import { getRoomCode } from "../pusher";
+import { getRoomCode, updateRoomCode } from "../pusher";
 
 interface EditorProps {
   socketRef: React.MutableRefObject<any>;
@@ -28,7 +28,10 @@ const Editor: React.FC<EditorProps> = memo(({
   const handleCodeChange = useCallback((code: string) => {
     codeRef.current = code;
     onCodeChange(code);
-  }, [onCodeChange]);
+    
+    // Directly update the room code when it changes
+    updateRoomCode(roomId, code);
+  }, [onCodeChange, roomId]);
   
   // Setup CodeMirror editor
   const { editorRef, ignoreChangeRef } = useEditorSetup({
@@ -37,7 +40,7 @@ const Editor: React.FC<EditorProps> = memo(({
   });
   
   // Setup collaboration features
-  useCollaboration({
+  const { handleRemoteChange } = useCollaboration({
     socketRef,
     roomId,
     username,
@@ -45,6 +48,21 @@ const Editor: React.FC<EditorProps> = memo(({
     ignoreChangeRef,
     onCodeChange: handleCodeChange
   });
+  
+  // Apply initial code if available when the component mounts
+  useEffect(() => {
+    const initialCode = getRoomCode(roomId);
+    if (initialCode && editorRef.current && !codeRef.current) {
+      // Set flag to ignore the change event this will trigger
+      ignoreChangeRef.current = true;
+      editorRef.current.setValue(initialCode);
+      codeRef.current = initialCode;
+      onCodeChange(initialCode);
+      setTimeout(() => {
+        ignoreChangeRef.current = false;
+      }, 10);
+    }
+  }, [roomId, onCodeChange, editorRef, ignoreChangeRef]);
   
   return <textarea id="realtimeEditor"></textarea>;
 });

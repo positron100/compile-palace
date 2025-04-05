@@ -25,7 +25,7 @@ export const useCollaboration = ({
   const lastEventTimestampRef = useRef<number>(0);
   const previousCodeRef = useRef<string>("");
   const roomIdRef = useRef<string>(roomId);
-  const THROTTLE_MS = 300; // Increased from 50ms to 300ms for better performance
+  const THROTTLE_MS = 500; // Increased from 300ms to 500ms for better performance
   
   // Update roomId ref when prop changes
   useEffect(() => {
@@ -217,7 +217,7 @@ export const useCollaboration = ({
               requestor: username 
             });
             console.log("Requesting global state sync via socket");
-          }, 300);
+          }, 500); // Increased from 300ms to 500ms for better stability
         }
       });
       

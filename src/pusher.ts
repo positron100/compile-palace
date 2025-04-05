@@ -4,8 +4,8 @@ import Pusher from "pusher-js";
 // Throttle/debounce timers to reduce message frequency
 let codeUpdateTimer: ReturnType<typeof setTimeout> | null = null;
 let presenceUpdateTimer: Record<string, ReturnType<typeof setTimeout>> = {};
-const PRESENCE_THROTTLE_MS = 5000; // Only update presence every 5 seconds
-const CODE_UPDATE_THROTTLE_MS = 300; // Only update code every 300ms
+const PRESENCE_THROTTLE_MS = 10000; // Increased to 10 seconds to reduce messages
+const CODE_UPDATE_THROTTLE_MS = 500; // Increased to 500ms to reduce messages
 
 // Generate a consistent user ID for the current browser session
 const getUserId = () => {
@@ -149,7 +149,7 @@ export const trackUserInRoom = (roomId: string, userData: any) => {
     return connectedUsers[roomId] || [];
   }
   
-  // Set throttle timer
+  // Set throttle timer with increased threshold
   presenceUpdateTimer[throttleKey] = setTimeout(() => {
     delete presenceUpdateTimer[throttleKey];
   }, PRESENCE_THROTTLE_MS);
