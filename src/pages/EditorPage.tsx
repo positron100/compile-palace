@@ -1,8 +1,9 @@
-import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
+
+import React, { useEffect, useRef, useState, useCallback } from "react";
 import Client from "../components/Client";
 import Editor from "../components/Editor";
 import OutputDialog from "../components/OutputDialog";
-import { initSocket } from "../socket";
+import { initSocket, disconnectSocket } from "../socket";
 import ConnectionStatus from "../components/ConnectionStatus";
 import {
   Navigate,
@@ -23,15 +24,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
-import pusher, { syncGlobalRoomState } from "../pusher";
 import { getCleanLanguageName } from "../utils/languageUtils";
 import userService from "../services/userService";
-import { 
-  Dialog, 
-  DialogTitle, 
-  DialogDescription,
-  DialogContent 
-} from "@/components/ui/dialog";
 
 function EditorPage() {
   const socketRef = useRef(null);
@@ -52,10 +46,9 @@ function EditorPage() {
 
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState("Connecting...");
-  const [pusherChannel, setPusherChannel] = useState(null);
 
   const username = location.state?.username || "Anonymous";
-  const [subscriptionCount, setSubscriptionCount] = useState(1);
+  const [userCount, setUserCount] = useState(1);
   
   const lastClientsUpdateRef = useRef(Date.now());
   const clientsUpdateThrottleMs = 2000;
@@ -132,260 +125,101 @@ function EditorPage() {
     });
   }, [username]);
 
-  const syncUsersFromGlobalState = useCallback(() => {
+  // Initialize socket connection
+  useEffect(() => {
     if (!roomId) return;
     
-    const roomUsers = userService.getRoomUsers(roomId);
-    
-    if (roomUsers && roomUsers.length > 0) {
-      updateClientsList(roomUsers);
-    }
-  }, [roomId, updateClientsList]);
-
-  const initPusher = useCallback(() => {
-    if (!roomId) return null;
-    
-    const channelName = `collab-${roomId}`;
-    
-    setConnectionStatus("Connecting to Pusher...");
+    setConnectionStatus("Connecting to server...");
     
     try {
-      console.log(`Initializing Pusher connection and subscribing to ${channelName}`);
-      const channel = pusher.subscribe(channelName);
+      // Initialize Socket.IO connection
+      const socket = initSocket();
+      socketRef.current = socket;
       
-      const handlePusherConnected = () => {
-        console.log("Connected to Pusher");
+      setSocketConnected(true);
+      setConnectionStatus("Connected to server");
+      
+      // Handle socket connection events
+      socket.on('connect', () => {
         setSocketConnected(true);
         setSocketError(false);
-        setConnectionStatus("Connected to Pusher");
+        setConnectionStatus("Connected");
+        console.log("Socket connected with ID:", socket.id);
         
-        const globalState = syncGlobalRoomState();
-        
-        syncUsersFromGlobalState();
-        
-        userService.syncUserPresence(roomId, username);
-      };
-      
-      pusher.connection.bind('connected', handlePusherConnected);
-      
-      if (pusher.connection.state === 'connected') {
-        handlePusherConnected();
-      }
-      
-      channel.bind('pusher:subscription_succeeded', () => {
-        console.log(`Successfully subscribed to public channel: ${channelName}`);
-        setConnectionStatus("Subscribed to room channel");
-        
-        userService.syncUserPresence(roomId, username);
-        syncUsersFromGlobalState();
-        
-        channel.bind(ACTIONS.ROOM_USERS, (data) => {
-          if (data && data.users) {
-            updateClientsList(data.users);
-          }
+        // Join room once connected
+        socket.emit(ACTIONS.JOIN, {
+          roomId,
+          username
         });
         
-        channel.bind(ACTIONS.JOIN_ROOM, (data) => {
-          if (data && data.username) {
-            console.log(`${data.username} joined the room via server event`);
-            
-            if (data.username !== username) {
-              toast.success(`${data.username} joined the room`);
-            }
-            
-            userService.syncUserPresence(roomId, username);
-            syncUsersFromGlobalState();
-          }
-        });
-        
-        const handlePresenceUpdate = (data) => {
-          if (data && data.username) {
-            if (data.action === 'connected') {
-              userService.syncUserPresence(roomId, username);
-              
-              if (data.username !== username) {
-                toast.success(`${data.username} is now online`);
-              }
-              
-              syncUsersFromGlobalState();
-            } else if (data.action === 'disconnected' && data.username !== username) {
-              const now = Date.now();
-              if (now - lastClientsUpdateRef.current >= clientsUpdateThrottleMs) {
-                lastClientsUpdateRef.current = now;
-                setClients(prev => prev.filter(client => client.username !== data.username));
-                toast.info(`${data.username} disconnected`);
-              }
-            }
-          }
-        };
-        
-        channel.bind(ACTIONS.PRESENCE_UPDATE_EVENT, handlePresenceUpdate);
-        
-        channel.bind('pusher:subscription_error', (error) => {
-          console.error("Public channel subscription error:", error);
-          setSocketError(true);
-          setConnectionStatus("Channel subscription failed");
-          
-          syncUsersFromGlobalState();
-        });
-        
-        channel.bind('pusher:subscription_count', (data) => {          
-          if (data && data.subscription_count && data.subscription_count > 0) {
-            setSubscriptionCount(data.subscription_count);
-          }
-        });
-      
-        setPusherChannel(channel);
-        setInitialized(true);
-        
-        return channel;
+        // Track user in local service
+        userService.trackUserPresence(roomId, username);
       });
       
-      channel.bind('pusher:subscription_error', (error) => {
-        console.error("Public channel subscription error:", error);
+      socket.on('connect_error', (err) => {
+        console.error("Socket connection error:", err);
         setSocketError(true);
-        setConnectionStatus("Channel subscription failed");
-        
-        syncUsersFromGlobalState();
+        setConnectionStatus("Connection failed");
+        toast.error("Failed to connect to server");
       });
       
-      channel.bind('pusher:subscription_count', (data) => {        
-        if (data && data.subscription_count && data.subscription_count > 0) {
-          setSubscriptionCount(data.subscription_count);
+      socket.on('disconnect', () => {
+        setSocketConnected(false);
+        setConnectionStatus("Disconnected");
+        console.log("Socket disconnected");
+      });
+      
+      // Handle room events
+      socket.on(ACTIONS.JOINED, ({ clients, username: joinedUser, socketId }) => {
+        console.log(`${joinedUser} joined the room`);
+        
+        if (joinedUser !== username) {
+          toast.success(`${joinedUser} joined the room`);
+        }
+        
+        updateClientsList(clients);
+        setUserCount(clients.length);
+      });
+      
+      socket.on(ACTIONS.DISCONNECTED, ({ socketId, username: leftUser }) => {
+        console.log(`${leftUser} left the room`);
+        toast.info(`${leftUser} left the room`);
+        
+        const now = Date.now();
+        if (now - lastClientsUpdateRef.current >= clientsUpdateThrottleMs) {
+          lastClientsUpdateRef.current = now;
+          setClients(prev => prev.filter(client => client.socketId !== socketId));
         }
       });
       
-      setPusherChannel(channel);
       setInitialized(true);
       
-      return channel;
-    } catch (error) {
-      console.error("Pusher initialization error:", error);
-      setSocketError(true);
-      setConnectionStatus("Pusher connection failed");
-      setInitialized(true);
-      toast.error("Failed to connect to Pusher, using local mode");
-      
-      userService.syncUserPresence(roomId, username);
-      syncUsersFromGlobalState();
-      return null;
-    }
-  }, [roomId, updateClientsList, username, syncUsersFromGlobalState, clientsUpdateThrottleMs]);
-
-  useEffect(() => {
-    if (!socketRef.current) {
-      console.log("Initializing socket connection");
-      
-      userService.connectToRoom(roomId, username)
-        .then(socket => {
-          socketRef.current = socket;
-          
-          if (socket) {
-            socket.on(ACTIONS.JOINED, ({ clients, username: joinedUser, socketId }) => {
-              console.log(`${joinedUser} joined the room`);
-              
-              if (joinedUser !== username) {
-                toast.success(`${joinedUser} joined the room`);
-              }
-              
-              updateClientsList(clients);
-            });
-            
-            socket.on(ACTIONS.DISCONNECTED, ({ socketId, username: leftUser }) => {
-              console.log(`${leftUser} left the room`);
-              toast.info(`${leftUser} left the room`);
-              
-              const now = Date.now();
-              if (now - lastClientsUpdateRef.current >= clientsUpdateThrottleMs) {
-                lastClientsUpdateRef.current = now;
-                setClients(prev => prev.filter(client => client.socketId !== socketId));
-              }
-            });
-            
-            socket.on(ACTIONS.CODE_CHANGE, (data) => {
-              if (data && data.code) {
-                codeRef.current = data.code;
-              }
-            });
-            
-            socket.on(ACTIONS.SYNC_REQUEST, (data) => {
-              if (codeRef && codeRef.current) {
-                socket.emit(ACTIONS.SYNC_RESPONSE, {
-                  roomId,
-                  code: codeRef.current,
-                  author: username
-                });
-              }
-            });
-            
-            socket.on(ACTIONS.SYNC_RESPONSE, (data) => {
-              if (data && data.code) {
-                codeRef.current = data.code;
-              }
-            });
-            
-            const setupSocketEventHandlers = () => {
-              socket.on(ACTIONS.JOIN_ROOM, (data) => {
-                if (data && data.username) {
-                  if (roomId) {
-                    userService.syncUserPresence(roomId, data.username);
-                  }
-                  
-                  syncUsersFromGlobalState();
-                  
-                  if (data.username !== username) {
-                    toast.success(`${data.username} joined the room`);
-                  }
-                }
-              });
-              
-              socket.on(ACTIONS.ROOM_USERS, (data) => {
-                if (data && data.users) {
-                  console.log("Received room users update:", data.users);
-                  updateClientsList(data.users);
-                }
-              });
-              
-              socket.on(ACTIONS.GLOBAL_ROOM_USERS, (data) => {
-                if (data && data.users) {
-                  console.log("Received global room users update:", data.users);
-                  updateClientsList(data.users);
-                }
-              });
-            };
-            
-            setupSocketEventHandlers();
-          }
-        })
-        .catch(err => {
-          console.error("Socket initialization error:", err);
-          userService.syncUserPresence(roomId, username);
-          syncUsersFromGlobalState();
-        });
-    }
-    
-    const channel = initPusher();
-    
-    const syncInterval = setInterval(() => {
-      syncUsersFromGlobalState();
-    }, 10000);
-    
-    return () => {
-      clearInterval(syncInterval);
-      
-      if (channel) {
-        console.log("Cleaning up Pusher connection");
-        channel.unbind_all();
-        pusher.unsubscribe(`collab-${roomId}`);
-      }
-      
-      if (socketRef.current) {
+      // Cleanup function
+      return () => {
         console.log("Cleaning up socket connection");
-        userService.disconnectFromRoom(roomId, username, socketRef.current);
-        socketRef.current = null;
+        
+        if (socketRef.current) {
+          socketRef.current.disconnect();
+        }
+        
+        disconnectSocket();
+      };
+    } catch (error) {
+      console.error("Socket initialization error:", error);
+      setSocketError(true);
+      setConnectionStatus("Connection failed");
+      setInitialized(true);
+      toast.error("Failed to connect to server");
+      
+      // Try to get users from local service
+      const roomUsers = userService.getRoomUsers(roomId);
+      if (roomUsers.length > 0) {
+        updateClientsList(roomUsers);
       }
-    };
-  }, [initPusher, roomId, updateClientsList, username, syncUsersFromGlobalState, clientsUpdateThrottleMs]);
+      
+      return () => {};
+    }
+  }, [roomId, username, updateClientsList]);
 
   useEffect(() => {
     if (initialized && !location.state?.username) {
@@ -406,13 +240,9 @@ function EditorPage() {
   };
 
   const leaveRoom = () => {
-    if (pusherChannel) {
-      pusherChannel.unbind_all();
-      pusher.unsubscribe(`collab-${roomId}`);
-    }
-    
     if (socketRef.current) {
-      userService.disconnectFromRoom(roomId, username, socketRef.current);
+      socketRef.current.emit(ACTIONS.LEAVE, { roomId });
+      socketRef.current.disconnect();
     }
     
     reactNavigator("/");
@@ -528,9 +358,9 @@ function EditorPage() {
           <div className="text-sm text-purple-600 font-medium">
             <span className="hidden sm:inline">Room: </span>
             <span className="text-purple-800">{roomId}</span>
-            {subscriptionCount > 0 && (
+            {userCount > 0 && (
               <span className="ml-2 text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full">
-                {subscriptionCount} {subscriptionCount === 1 ? 'user' : 'users'}
+                {userCount} {userCount === 1 ? 'user' : 'users'}
               </span>
             )}
           </div>

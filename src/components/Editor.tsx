@@ -2,7 +2,7 @@
 import React, { useRef, useCallback, memo, useEffect } from "react";
 import { useEditorSetup } from "../hooks/useEditorSetup";
 import { useCollaboration } from "../hooks/useCollaboration";
-import { getRoomCode, updateRoomCode } from "../pusher";
+import { getRoomCode } from "../socket";
 
 interface EditorProps {
   socketRef: React.MutableRefObject<any>;
@@ -28,10 +28,7 @@ const Editor: React.FC<EditorProps> = memo(({
   const handleCodeChange = useCallback((code: string) => {
     codeRef.current = code;
     onCodeChange(code);
-    
-    // Directly update the room code when it changes
-    updateRoomCode(roomId, code);
-  }, [onCodeChange, roomId]);
+  }, [onCodeChange]);
   
   // Setup CodeMirror editor
   const { editorRef, ignoreChangeRef } = useEditorSetup({
