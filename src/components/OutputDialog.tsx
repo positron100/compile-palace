@@ -26,6 +26,8 @@ const OutputDialog: React.FC<OutputDialogProps> = ({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
         className="max-w-4xl p-0 overflow-hidden"
+        // This overrides the default close button from Dialog
+        closeButton={false}
       >
         <DialogHeader className="p-4 border-b bg-gradient-to-r from-purple-50 to-white">
           <div className="flex justify-between items-center">
