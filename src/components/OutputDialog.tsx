@@ -36,7 +36,7 @@ const OutputDialog: React.FC<OutputDialogProps> = ({
         <DialogHeader className="p-4 border-b bg-gradient-to-r from-purple-50 to-white">
           <div className="flex justify-between items-center">
             <DialogTitle>Execution Results</DialogTitle>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-3">
               <Button
                 variant="ghost"
                 size="icon"

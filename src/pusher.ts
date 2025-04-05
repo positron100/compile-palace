@@ -1,6 +1,12 @@
 
 import Pusher from "pusher-js";
 
+// Throttle/debounce timers to reduce message frequency
+let codeUpdateTimer: ReturnType<typeof setTimeout> | null = null;
+let presenceUpdateTimer: Record<string, ReturnType<typeof setTimeout>> = {};
+const PRESENCE_THROTTLE_MS = 5000; // Only update presence every 5 seconds
+const CODE_UPDATE_THROTTLE_MS = 300; // Only update code every 300ms
+
 // Generate a consistent user ID for the current browser session
 const getUserId = () => {
   let userId = localStorage.getItem('userId');
@@ -131,14 +137,26 @@ const broadcastRoomStateUpdate = () => {
   }
 };
 
-// Helper to track users by room
+// Helper to track users by room with throttling
 export const trackUserInRoom = (roomId: string, userData: any) => {
+  if (!roomId || !userData || !userData.username) return [];
+  
+  const username = userData.username || 'Anonymous';
+  
+  // Check if we've recently updated this user (throttle presence updates)
+  const throttleKey = `${roomId}-${username}`;
+  if (presenceUpdateTimer[throttleKey]) {
+    return connectedUsers[roomId] || [];
+  }
+  
+  // Set throttle timer
+  presenceUpdateTimer[throttleKey] = setTimeout(() => {
+    delete presenceUpdateTimer[throttleKey];
+  }, PRESENCE_THROTTLE_MS);
+  
   if (!connectedUsers[roomId]) {
     connectedUsers[roomId] = [];
   }
-  
-  // Ensure we have a valid username
-  const username = userData.username || 'Anonymous';
   
   // Check if user already exists
   const existingUserIndex = connectedUsers[roomId].findIndex(
@@ -179,41 +197,21 @@ export const trackUserInRoom = (roomId: string, userData: any) => {
   
   globalState.lastSync = Date.now();
   
-  // Broadcast state change to other tabs
+  // Broadcast state change to other tabs (but don't flood with updates)
   broadcastRoomStateUpdate();
-  
-  // Also notify any Pusher channels for this room about the user update
-  try {
-    const channelName = `collab-${roomId}`;
-    const channel = pusher.channel(channelName);
-    
-    if (channel) {
-      // Use trigger for public channels
-      channel.trigger('presence-update', {
-        clients: connectedUsers[roomId],
-        count: connectedUsers[roomId].length
-      });
-      
-      // Also use the room users event
-      channel.trigger('room-users', {
-        users: connectedUsers[roomId],
-        count: connectedUsers[roomId].length
-      });
-    }
-  } catch (err) {
-    console.error('Failed to notify channel about user update', err);
-  }
   
   return connectedUsers[roomId];
 };
 
 // Helper to remove user from room
 export const removeUserFromRoom = (roomId: string, username: string) => {
-  if (connectedUsers[roomId]) {
-    connectedUsers[roomId] = connectedUsers[roomId].filter(
-      user => user.username !== username
-    );
+  if (!connectedUsers[roomId]) {
+    return [];
   }
+  
+  connectedUsers[roomId] = connectedUsers[roomId].filter(
+    user => user.username !== username
+  );
   
   // Update global room state
   const globalState = (window as any).__roomState;
@@ -223,28 +221,6 @@ export const removeUserFromRoom = (roomId: string, username: string) => {
     
     // Broadcast state change to other tabs
     broadcastRoomStateUpdate();
-  }
-  
-  // Also notify any Pusher channels for this room about the user update
-  try {
-    const channelName = `collab-${roomId}`;
-    const channel = pusher.channel(channelName);
-    
-    if (channel) {
-      // Use trigger for public channels
-      channel.trigger('presence-update', {
-        clients: connectedUsers[roomId] || [],
-        count: (connectedUsers[roomId] || []).length
-      });
-      
-      // Also use the room users event
-      channel.trigger('room-users', {
-        users: connectedUsers[roomId] || [],
-        count: (connectedUsers[roomId] || []).length
-      });
-    }
-  } catch (err) {
-    console.error('Failed to notify channel about user removal', err);
   }
   
   return connectedUsers[roomId] || [];
@@ -289,38 +265,37 @@ export const syncGlobalRoomState = () => {
   return globalState;
 };
 
-// Update code for a specific room in global state
+// Update code for a specific room in global state with throttling
 export const updateRoomCode = (roomId: string, code: string) => {
-  const globalState = (window as any).__roomState;
-  if (!globalState.rooms[roomId]) {
-    globalState.rooms[roomId] = {
-      users: {},
-      code: "",
-      createdAt: Date.now()
-    };
+  // Clear any existing timer
+  if (codeUpdateTimer) {
+    clearTimeout(codeUpdateTimer);
   }
   
-  globalState.rooms[roomId].code = code;
-  globalState.lastSync = Date.now();
-  
-  // Broadcast state change to other tabs
-  broadcastRoomStateUpdate();
-  
-  // Also notify any Pusher channels for this room about the code update
-  try {
-    const channelName = `collab-${roomId}`;
-    const channel = pusher.channel(channelName);
-    
-    if (channel) {
-      // Use trigger for public channels
-      channel.trigger('room-code-update', {
-        code,
-        author: 'system'
-      });
+  // Throttle updates to reduce message frequency
+  codeUpdateTimer = setTimeout(() => {
+    const globalState = (window as any).__roomState;
+    if (!globalState.rooms[roomId]) {
+      globalState.rooms[roomId] = {
+        users: {},
+        code: "",
+        createdAt: Date.now()
+      };
     }
-  } catch (err) {
-    console.error('Failed to notify channel about code update', err);
-  }
+    
+    // Only update if code actually changed
+    if (globalState.rooms[roomId].code !== code) {
+      globalState.rooms[roomId].code = code;
+      globalState.lastSync = Date.now();
+      
+      // Broadcast state change to other tabs
+      broadcastRoomStateUpdate();
+      
+      if (import.meta.env.DEV) {
+        console.log(`[ROOM-EVENT] updateRoomCode fired for ${roomId}`);
+      }
+    }
+  }, CODE_UPDATE_THROTTLE_MS);
 };
 
 // Get code for a specific room from global state

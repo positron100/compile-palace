@@ -22,10 +22,10 @@ export const useCollaboration = ({
   onCodeChange
 }: UseCollaborationProps) => {
   const [channel, setChannel] = useState<any>(null);
-  const [lastEventTimestamp, setLastEventTimestamp] = useState<number>(0);
+  const lastEventTimestampRef = useRef<number>(0);
   const previousCodeRef = useRef<string>("");
   const roomIdRef = useRef<string>(roomId);
-  const THROTTLE_MS = 50; // Reduced from 100ms for faster updates
+  const THROTTLE_MS = 300; // Increased from 50ms to 300ms for better performance
   
   // Update roomId ref when prop changes
   useEffect(() => {
@@ -101,7 +101,7 @@ export const useCollaboration = ({
       
       // Only send sync if we have code or we're the first user (room creator)
       if (codeToSync) {
-        // Send via socket AND client event for redundancy
+        // Send via socket only (don't use client events)
         if (socketRef.current) {
           socketRef.current.emit(ACTIONS.SYNC_RESPONSE, {
             roomId: roomIdRef.current,
@@ -113,25 +113,11 @@ export const useCollaboration = ({
           // Also update global state
           updateRoomCode(roomIdRef.current, codeToSync);
         }
-        
-        // Also try to broadcast through the channel if it's available
-        if (channel) {
-          try {
-            // Use trigger instead of client event since we're on a public channel
-            channel.trigger(ACTIONS.SYNC_RESPONSE, {
-              code: codeToSync,
-              author: username
-            });
-            console.log("Sent sync via channel trigger");
-          } catch (err) {
-            console.error("Error sending sync via channel", err);
-          }
-        }
       } else {
         console.log("No code to sync yet");
       }
     }
-  }, [channel, editorRef, roomIdRef, socketRef, username]);
+  }, [editorRef, roomIdRef, socketRef, username]);
 
   // Subscribe to Pusher channel for the room
   useEffect(() => {
@@ -166,7 +152,7 @@ export const useCollaboration = ({
       // Add an event handler for acknowledging user presence
       newChannel.bind(ACTIONS.JOIN_ROOM, (data: any) => {
         console.log(`User ${data.username} joined the room`);
-        // If we have any code, send it as a response
+        // If we have any code, send it as a response via socket only
         if (editorRef.current) {
           const currentCode = editorRef.current.getValue();
           const storedCode = getRoomCode(roomIdRef.current);
@@ -174,31 +160,16 @@ export const useCollaboration = ({
           // Use current code, stored code, or previous code - in that order
           const codeToSync = currentCode || storedCode || previousCodeRef.current;
           
-          if (codeToSync) {
-            // Send via socket
-            if (socketRef.current) {
-              socketRef.current.emit(ACTIONS.SYNC_RESPONSE, {
-                roomId: roomIdRef.current,
-                code: codeToSync,
-                author: username
-              });
-              console.log(`Sent current code to new user ${data.username} via socket`);
-              
-              // Also update global state
-              updateRoomCode(roomIdRef.current, codeToSync);
-            }
+          if (codeToSync && socketRef.current) {
+            socketRef.current.emit(ACTIONS.SYNC_RESPONSE, {
+              roomId: roomIdRef.current,
+              code: codeToSync,
+              author: username
+            });
+            console.log(`Sent current code to new user ${data.username} via socket`);
             
-            // Also try to broadcast through the channel
-            try {
-              // Use trigger instead of client event for public channels
-              newChannel.trigger(ACTIONS.SYNC_RESPONSE, {
-                code: codeToSync,
-                author: username
-              });
-              console.log(`Sent current code to new user ${data.username} via channel trigger`);
-            } catch (err) {
-              console.error("Error sending sync via channel", err);
-            }
+            // Also update global state
+            updateRoomCode(roomIdRef.current, codeToSync);
           }
         }
       });
@@ -214,7 +185,7 @@ export const useCollaboration = ({
           handleRemoteChange({ code: storedCode, author: 'system' });
         }
         
-        // Announce presence via socket
+        // Announce presence via socket only
         if (socketRef.current) {
           socketRef.current.emit(ACTIONS.PRESENCE_UPDATE_EVENT, {
             roomId: roomIdRef.current,
@@ -248,24 +219,6 @@ export const useCollaboration = ({
             console.log("Requesting global state sync via socket");
           }, 300);
         }
-        
-        // Also try to broadcast through the channel
-        try {
-          // Use trigger for public channels
-          newChannel.trigger(ACTIONS.JOIN_ROOM, {
-            username,
-            timestamp: Date.now()
-          });
-          console.log(`Announced joining room as ${username} via channel trigger`);
-          
-          // Also request code sync via channel
-          newChannel.trigger(ACTIONS.SYNC_REQUEST, {
-            requestor: username
-          });
-          console.log("Requesting initial code sync via channel trigger");
-        } catch (err) {
-          console.error("Error sending join/sync events via channel", err);
-        }
       });
       
       // Global sync response handler
@@ -283,7 +236,7 @@ export const useCollaboration = ({
       return () => {
         console.log(`Unsubscribing from Pusher channel: ${channelName}`);
         try {
-          // Announce disconnection via socket
+          // Announce disconnection via socket only
           if (socketRef.current) {
             socketRef.current.emit(ACTIONS.PRESENCE_UPDATE_EVENT, {
               roomId: roomIdRef.current,
@@ -306,11 +259,11 @@ export const useCollaboration = ({
     }
   }, [roomId, username, socketRef, handleRemoteChange, handleSyncRequest, editorRef, channel]);
 
-  // Setup handlers for editor changes
+  // Setup handlers for editor changes with improved throttling
   const setupEditorChangeHandlers = useCallback(() => {
     if (!editorRef.current) return;
 
-    // Handling code changes with reduced throttling for faster updates
+    // Handling code changes with improved throttling for better performance
     editorRef.current.on("change", (instance: any, changes: any) => {
       // Exit early if we should ignore this change (from remote update)
       if (ignoreChangeRef.current) {
@@ -326,61 +279,29 @@ export const useCollaboration = ({
         onCodeChange(code);
         previousCodeRef.current = code;
         
-        // Update global state
-        updateRoomCode(roomIdRef.current, code);
-        
-        // Reduced throttle time for faster real-time updates
+        // Update global state with throttling
         const now = Date.now();
-        if (now - lastEventTimestamp > THROTTLE_MS && roomIdRef.current) {
-          setLastEventTimestamp(now);
+        if (now - lastEventTimestampRef.current > THROTTLE_MS && roomIdRef.current) {
+          lastEventTimestampRef.current = now;
           
-          // Use socket for communication
+          // Update global room code state (this is throttled internally)
+          updateRoomCode(roomIdRef.current, code);
+          
+          // Use socket for communication (this is more efficient than client events)
           if (socketRef.current) {
-            socketRef.current.emit(ACTIONS.CODE_CHANGE, {
-              roomId: roomIdRef.current,
-              code,
-              author: username
-            });
-            
-            // Also emit the CODE_BROADCAST event for redundancy
-            socketRef.current.emit(ACTIONS.CODE_BROADCAST, {
-              roomId: roomIdRef.current,
-              code,
-              author: username
-            });
-            
-            // Emit the new consistent event name
+            // Only emit one event to reduce message count
             socketRef.current.emit(ACTIONS.ROOM_CODE_UPDATE, {
               roomId: roomIdRef.current,
               code,
               author: username
             });
           }
-          
-          // Also try to broadcast via channel
-          if (channel) {
-            try {
-              // Use trigger for public channels
-              channel.trigger(ACTIONS.CODE_BROADCAST, {
-                code,
-                author: username
-              });
-              
-              // Also use the new consistent event name
-              channel.trigger(ACTIONS.ROOM_CODE_UPDATE, {
-                code,
-                author: username
-              });
-            } catch (err) {
-              console.error("Error broadcasting code change via channel", err);
-            }
-          }
         }
       }
     });
-  }, [editorRef, ignoreChangeRef, lastEventTimestamp, onCodeChange, roomIdRef, socketRef, username, channel]);
+  }, [editorRef, ignoreChangeRef, onCodeChange, roomIdRef, socketRef, username, THROTTLE_MS]);
 
-  // Setup editor change handlers when editor and channel are ready
+  // Setup editor change handlers when editor is ready
   useEffect(() => {
     if (editorRef.current) {
       setupEditorChangeHandlers();

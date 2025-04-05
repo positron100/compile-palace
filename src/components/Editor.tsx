@@ -1,5 +1,5 @@
 
-import React, { useRef } from "react";
+import React, { useRef, useCallback, memo } from "react";
 import { useEditorSetup } from "../hooks/useEditorSetup";
 import { useCollaboration } from "../hooks/useCollaboration";
 import { getRoomCode } from "../pusher";
@@ -15,7 +15,7 @@ interface EditorProps {
   username?: string;
 }
 
-const Editor: React.FC<EditorProps> = ({ 
+const Editor: React.FC<EditorProps> = memo(({ 
   socketRef, 
   roomId, 
   onCodeChange, 
@@ -24,12 +24,15 @@ const Editor: React.FC<EditorProps> = ({
 }) => {
   const codeRef = useRef<string>(getRoomCode(roomId) || "");
   
+  // Memoize the code change handler to prevent unnecessary re-renders
+  const handleCodeChange = useCallback((code: string) => {
+    codeRef.current = code;
+    onCodeChange(code);
+  }, [onCodeChange]);
+  
   // Setup CodeMirror editor
   const { editorRef, ignoreChangeRef } = useEditorSetup({
-    onCodeChange: (code: string) => {
-      codeRef.current = code;
-      onCodeChange(code);
-    },
+    onCodeChange: handleCodeChange,
     languageId: language.id
   });
   
@@ -40,13 +43,12 @@ const Editor: React.FC<EditorProps> = ({
     username,
     editorRef,
     ignoreChangeRef,
-    onCodeChange: (code: string) => {
-      codeRef.current = code;
-      onCodeChange(code);
-    }
+    onCodeChange: handleCodeChange
   });
   
   return <textarea id="realtimeEditor"></textarea>;
-};
+});
+
+Editor.displayName = "Editor";
 
 export default Editor;

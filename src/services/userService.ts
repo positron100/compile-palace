@@ -3,6 +3,10 @@ import ACTIONS from '../Actions';
 import pusher, { trackUserInRoom, getUsersInRoom, removeUserFromRoom, getPusherChannel } from '../pusher';
 import { initSocket } from '../socket';
 
+// Throttling logic to reduce unnecessary updates
+const presenceThrottleTime = 5000; // 5 seconds between presence updates
+let lastPresenceUpdate: Record<string, number> = {};
+
 // Get user data from localStorage
 const getLocalUserData = () => {
   try {
@@ -50,7 +54,7 @@ export const connectToRoom = async (roomId: string, username: string) => {
   // Initialize socket connection
   const socket = await initSocket();
   
-  // Announce presence via socket and Pusher
+  // Announce presence via socket (throttled)
   if (socket) {
     // Join the room via socket
     socket.emit(ACTIONS.JOIN, {
@@ -73,7 +77,7 @@ export const connectToRoom = async (roomId: string, username: string) => {
       action: 'connected'
     });
     
-    // Request initial sync from other users
+    // Request initial sync from other users (with delay to avoid race conditions)
     setTimeout(() => {
       socket.emit(ACTIONS.SYNC_REQUEST, { 
         roomId,
@@ -85,9 +89,6 @@ export const connectToRoom = async (roomId: string, username: string) => {
         roomId,
         requestor: username 
       });
-      
-      // Force update user list
-      broadcastRoomUsers(roomId);
     }, 500);
   }
   
@@ -98,64 +99,28 @@ export const connectToRoom = async (roomId: string, username: string) => {
     lastSeen: Date.now()
   });
   
-  // Try to announce presence via Pusher channel
-  try {
-    const channelName = `collab-${roomId}`;
-    const channel = getPusherChannel(channelName) || pusher.subscribe(channelName);
-    
-    if (channel) {
-      // For public channels, use trigger instead of client events
-      channel.trigger(ACTIONS.PRESENCE_UPDATE_EVENT, {
-        username,
-        timestamp: Date.now(),
-        action: 'connected'
-      });
-      
-      channel.trigger(ACTIONS.JOIN_ROOM, {
-        username,
-        timestamp: Date.now()
-      });
-      
-      // Also broadcast current user list
-      channel.trigger(ACTIONS.ROOM_USERS, {
-        users: getUsersInRoom(roomId),
-        count: getUsersInRoom(roomId).length
-      });
-    }
-  } catch (err) {
-    console.error("Error announcing presence via Pusher", err);
-  }
-  
   return socket;
 };
 
-// Broadcast current room users to all clients
+// Broadcast current room users to all clients (throttled)
 export const broadcastRoomUsers = (roomId: string) => {
   if (!roomId) return;
+  
+  const throttleKey = `broadcast-${roomId}`;
+  const now = Date.now();
+  
+  // Skip if we updated too recently
+  if (lastPresenceUpdate[throttleKey] && now - lastPresenceUpdate[throttleKey] < presenceThrottleTime) {
+    return;
+  }
+  
+  lastPresenceUpdate[throttleKey] = now;
   
   const users = getUsersInRoom(roomId);
   console.log(`Broadcasting room users for ${roomId}:`, users);
   
-  // Try via Pusher channel
-  try {
-    const channelName = `collab-${roomId}`;
-    const channel = getPusherChannel(channelName);
-    
-    if (channel) {
-      // For public channels, use trigger
-      channel.trigger(ACTIONS.ROOM_USERS, {
-        users,
-        count: users.length
-      });
-      
-      channel.trigger(ACTIONS.PRESENCE_UPDATE, {
-        clients: users,
-        count: users.length
-      });
-    }
-  } catch (err) {
-    console.error("Error broadcasting room users via Pusher", err);
-  }
+  // Use socket only (Pusher client events not recommended for public channels)
+  // This significantly reduces the number of Pusher messages
 };
 
 // Disconnect user from room and announce departure
@@ -163,28 +128,6 @@ export const disconnectFromRoom = (roomId: string, username: string, socket: any
   if (!roomId || !username) return;
   
   console.log(`User ${username} disconnecting from room ${roomId}`);
-  
-  // Try to announce departure via Pusher channel first
-  try {
-    const channelName = `collab-${roomId}`;
-    const channel = getPusherChannel(channelName);
-    
-    if (channel) {
-      // For public channels, use trigger
-      channel.trigger(ACTIONS.PRESENCE_UPDATE_EVENT, {
-        username,
-        timestamp: Date.now(),
-        action: 'disconnected'
-      });
-      
-      channel.trigger(ACTIONS.LEAVE_ROOM, {
-        username,
-        timestamp: Date.now()
-      });
-    }
-  } catch (err) {
-    console.error("Error announcing departure via Pusher", err);
-  }
   
   // Remove from global state
   removeUserFromRoom(roomId, username);
@@ -209,11 +152,6 @@ export const disconnectFromRoom = (roomId: string, username: string, socket: any
     // Disconnect socket
     socket.disconnect();
   }
-  
-  // Broadcast updated user list
-  setTimeout(() => {
-    broadcastRoomUsers(roomId);
-  }, 300);
 };
 
 // Get current list of users in a room
@@ -222,37 +160,27 @@ export const getRoomUsers = (roomId: string) => {
   return getUsersInRoom(roomId);
 };
 
-// Sync current user data across tabs and sessions
+// Sync current user data across tabs and sessions (throttled)
 export const syncUserPresence = (roomId: string, username: string) => {
   if (!roomId || !username) return;
   
+  const throttleKey = `${roomId}-${username}`;
+  const now = Date.now();
+  
+  // Skip if we updated too recently
+  if (lastPresenceUpdate[throttleKey] && now - lastPresenceUpdate[throttleKey] < presenceThrottleTime) {
+    return null;
+  }
+  
+  lastPresenceUpdate[throttleKey] = now;
+  
   const userData = {
     username,
-    socketId: `user-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-    lastSeen: Date.now()
+    socketId: `user-${now}-${Math.random().toString(36).slice(2)}`,
+    lastSeen: now
   };
   
   trackUserInRoom(roomId, userData);
-  
-  // Also try to broadcast via Pusher
-  try {
-    const channelName = `collab-${roomId}`;
-    const channel = getPusherChannel(channelName);
-    
-    if (channel) {
-      // For public channels, use trigger
-      channel.trigger(ACTIONS.PRESENCE_UPDATE_EVENT, {
-        username,
-        timestamp: Date.now(),
-        action: 'connected'
-      });
-      
-      // Also broadcast current user list
-      broadcastRoomUsers(roomId);
-    }
-  } catch (err) {
-    console.error("Error syncing user presence via Pusher", err);
-  }
   
   return userData;
 };
