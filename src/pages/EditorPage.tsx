@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState, useCallback } from "react";
+import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import Client from "../components/Client";
 import Editor from "../components/Editor";
 import OutputDialog from "../components/OutputDialog";
@@ -39,7 +39,21 @@ function EditorPage() {
   const location = useLocation();
   const { roomId } = useParams();
   const reactNavigator = useNavigate();
+  
+  const previousClientsRef = useRef([]);
   const [clients, setClients] = useState([]);
+  const [clientsStable, setClientsStable] = useState([]);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (JSON.stringify(clients) !== JSON.stringify(previousClientsRef.current)) {
+        setClientsStable(clients);
+        previousClientsRef.current = clients;
+      }
+    }, 300);
+    
+    return () => clearTimeout(timer);
+  }, [clients]);
 
   const [language, setLanguage] = useState(languageOptions[0]);
   const [stdin, setStdin] = useState("");
@@ -197,7 +211,7 @@ function EditorPage() {
             console.log(`Presence update from ${data.username}: ${data.action}`);
             
             if (data.action === 'connected') {
-              userService.syncUserPresence(roomId, username);
+              userService.syncUserPresence(roomId, data.username);
               
               if (data.username !== username) {
                 toast.success(`${data.username} is now online`);
@@ -446,7 +460,7 @@ function EditorPage() {
     }
   }, [initialized, location.state?.username, reactNavigator]);
 
-  const copyRoomId = async () => {
+  const copyRoomId = useCallback(async () => {
     try {
       await navigator.clipboard.writeText(roomId || "");
       toast.success("Room ID copied to clipboard");
@@ -454,9 +468,9 @@ function EditorPage() {
       toast.error("Could not copy Room ID");
       console.error(err);
     }
-  };
+  }, [roomId]);
 
-  const leaveRoom = () => {
+  const leaveRoom = useCallback(() => {
     if (pusherChannel) {
       pusherChannel.unbind_all();
       pusher.unsubscribe(`collab-${roomId}`);
@@ -467,7 +481,7 @@ function EditorPage() {
     }
     
     reactNavigator("/");
-  };
+  }, [pusherChannel, roomId, username, reactNavigator]);
 
   const SidebarContent = () => (
     <>
@@ -483,10 +497,10 @@ function EditorPage() {
       </div>
       
       <div className="mb-8">
-        <h3 className="font-semibold text-gray-700 mb-3">Connected Users ({clients.length})</h3>
-        <div className="flex flex-wrap gap-3 min-h-16">
-          {clients.length > 0 ? (
-            clients.map((client) => (
+        <h3 className="font-semibold text-gray-700 mb-3">Connected Users ({clientsStable.length})</h3>
+        <div className="flex flex-wrap gap-3 min-h-16 transition-all duration-300">
+          {clientsStable.length > 0 ? (
+            clientsStable.map((client) => (
               <Client 
                 key={client.socketId || client.username} 
                 username={client.username} 
