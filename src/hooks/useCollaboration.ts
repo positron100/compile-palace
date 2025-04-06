@@ -1,5 +1,5 @@
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useEffect, useRef, useCallback } from "react";
 import ACTIONS from "../Actions";
 import { updateRoomCode, getRoomCode } from "../socket";
 import { toast } from "sonner";
@@ -38,17 +38,13 @@ export const useCollaboration = ({
   // Handle remote code changes
   const handleRemoteChange = useCallback((data: { code: string, author?: string }) => {
     if (!editorRef.current || !data.code) {
-      console.log("Remote change ignored: editor not ready or no code received");
       return;
     }
     
     // Skip if the code is exactly the same (prevents unnecessary updates)
     if (data.code === previousCodeRef.current) {
-      console.log("Skipping identical remote code update");
       return;
     }
-    
-    console.log(`Received remote code change from ${data.author || 'unknown user'}`);
     
     // Save cursor position and scroll state
     const cursor = editorRef.current.getCursor();
@@ -75,7 +71,7 @@ export const useCollaboration = ({
         toast.info(`Code updated by ${data.author}`);
       }
     } catch (err) {
-      console.error("Error applying remote code change:", err);
+      // Error handling
     } finally {
       // Restore cursor position and scroll state
       editorRef.current.setCursor(cursor);
@@ -90,7 +86,6 @@ export const useCollaboration = ({
 
   // Handler for sync requests
   const handleSyncRequest = useCallback((data: any) => {
-    console.log("Received code sync request from:", data?.requestor || "unknown");
     if (editorRef.current && socketRef.current) {
       const currentCode = editorRef.current.getValue();
       const storedCode = getRoomCode(roomIdRef.current);
@@ -105,12 +100,9 @@ export const useCollaboration = ({
           code: codeToSync,
           author: username
         });
-        console.log("Sent sync response");
         
         // Also update room code store
         updateRoomCode(roomIdRef.current, codeToSync);
-      } else {
-        console.log("No code to sync yet");
       }
     }
   }, [editorRef, roomIdRef, socketRef, username]);
@@ -118,11 +110,8 @@ export const useCollaboration = ({
   // Subscribe to socket events
   useEffect(() => {
     if (!roomId || !socketRef.current) {
-      console.log("No room ID or socket provided, skipping event subscription");
       return;
     }
-    
-    console.log(`Setting up socket event handlers for room: ${roomId}`);
     
     const socket = socketRef.current;
     
@@ -139,20 +128,17 @@ export const useCollaboration = ({
           roomId: roomIdRef.current,
           requestor: username 
         });
-        console.log("Requesting initial code sync via socket");
       }
     }, 500);
     
     // Apply any stored code from local storage
     const storedCode = getRoomCode(roomIdRef.current);
     if (storedCode) {
-      console.log('Found stored code, applying it');
       handleRemoteChange({ code: storedCode, author: 'system' });
     }
     
     // Cleanup event listeners when component unmounts or roomId changes
     return () => {
-      console.log(`Cleaning up socket event handlers for room: ${roomId}`);
       socket.off(ACTIONS.CODE_CHANGE, handleRemoteChange);
       socket.off(ACTIONS.SYNC_CODE, handleRemoteChange);
       socket.off(ACTIONS.SYNC_RESPONSE, handleRemoteChange);
@@ -164,12 +150,9 @@ export const useCollaboration = ({
   useEffect(() => {
     if (!editorRef.current || !socketRef.current) return;
     
-    console.log("Setting up editor change handlers");
-    
     // Debounced function to send code changes
     const sendCodeChange = debounce((code: string) => {
       if (socketRef.current && roomIdRef.current) {
-        console.log("Sending code change");
         socketRef.current.emit(ACTIONS.CODE_CHANGE, {
           roomId: roomIdRef.current,
           code,

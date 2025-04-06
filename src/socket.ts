@@ -15,23 +15,21 @@ let socket: Socket | null = null;
  */
 export const initSocket = (): Socket => {
   if (!socket) {
-    console.log('Connecting to socket server at', SERVER_URL);
-    
     socket = io(SERVER_URL, {
       transports: ['websocket'],
       timeout: 10000,
     });
     
     socket.on('connect', () => {
-      console.log('Successfully connected to socket server!');
+      // Socket connected
     });
     
     socket.on('connect_error', (err) => {
-      console.error('Socket connection error:', err);
+      // Connection error
     });
     
     socket.on('disconnect', () => {
-      console.log('Disconnected from socket server');
+      // Disconnected
     });
   }
   

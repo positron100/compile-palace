@@ -67,7 +67,7 @@ function EditorPage() {
       setShowOutput(true);
       toast.success("Code executed successfully!");
     } catch (error) {
-      console.error("Compilation error:", error);
+      setShowOutput(true);
       toast.error("Error compiling code. Please try again.");
     } finally {
       setIsCompiling(false);
@@ -81,7 +81,6 @@ function EditorPage() {
     }
     
     lastClientsUpdateRef.current = now;
-    console.log("Updating clients list:", newClients, "Append:", append);
     
     setClients(prevClients => {
       let updatedClients = append ? [...prevClients] : [];
@@ -121,6 +120,9 @@ function EditorPage() {
       
       updatedClients.sort((a, b) => a.username.localeCompare(b.username));
       
+      // Update user count when clients change
+      setUserCount(updatedClients.length);
+      
       return updatedClients;
     });
   }, [username]);
@@ -144,7 +146,6 @@ function EditorPage() {
         setSocketConnected(true);
         setSocketError(false);
         setConnectionStatus("Connected");
-        console.log("Socket connected with ID:", socket.id);
         
         // Join room once connected
         socket.emit(ACTIONS.JOIN, {
@@ -157,7 +158,6 @@ function EditorPage() {
       });
       
       socket.on('connect_error', (err) => {
-        console.error("Socket connection error:", err);
         setSocketError(true);
         setConnectionStatus("Connection failed");
         toast.error("Failed to connect to server");
@@ -166,13 +166,10 @@ function EditorPage() {
       socket.on('disconnect', () => {
         setSocketConnected(false);
         setConnectionStatus("Disconnected");
-        console.log("Socket disconnected");
       });
       
       // Handle room events
       socket.on(ACTIONS.JOINED, ({ clients, username: joinedUser, socketId }) => {
-        console.log(`${joinedUser} joined the room`);
-        
         if (joinedUser !== username) {
           toast.success(`${joinedUser} joined the room`);
         }
@@ -182,22 +179,20 @@ function EditorPage() {
       });
       
       socket.on(ACTIONS.DISCONNECTED, ({ socketId, username: leftUser }) => {
-        console.log(`${leftUser} left the room`);
         toast.info(`${leftUser} left the room`);
         
-        const now = Date.now();
-        if (now - lastClientsUpdateRef.current >= clientsUpdateThrottleMs) {
-          lastClientsUpdateRef.current = now;
-          setClients(prev => prev.filter(client => client.socketId !== socketId));
-        }
+        setClients(prev => {
+          const updatedClients = prev.filter(client => client.socketId !== socketId);
+          // Update user count when a user leaves
+          setUserCount(updatedClients.length);
+          return updatedClients;
+        });
       });
       
       setInitialized(true);
       
       // Cleanup function
       return () => {
-        console.log("Cleaning up socket connection");
-        
         if (socketRef.current) {
           socketRef.current.disconnect();
         }
@@ -205,7 +200,6 @@ function EditorPage() {
         disconnectSocket();
       };
     } catch (error) {
-      console.error("Socket initialization error:", error);
       setSocketError(true);
       setConnectionStatus("Connection failed");
       setInitialized(true);
@@ -223,7 +217,6 @@ function EditorPage() {
 
   useEffect(() => {
     if (initialized && !location.state?.username) {
-      console.log("No username provided, redirecting to home");
       toast.error("Please enter a username to join a room");
       reactNavigator("/");
     }
@@ -235,7 +228,6 @@ function EditorPage() {
       toast.success("Room ID copied to clipboard");
     } catch (err) {
       toast.error("Could not copy Room ID");
-      console.error(err);
     }
   };
 
