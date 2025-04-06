@@ -22,7 +22,7 @@ interface OutputSectionProps {
 
 const OutputSection: React.FC<OutputSectionProps> = ({ outputDetails }) => {
   return (
-    <div className="output-section p-5">
+    <div className="output-section py-5">
       {outputDetails ? (
         <div className="space-y-5">
           <div className="output-header mb-4">
@@ -90,7 +90,7 @@ const OutputSection: React.FC<OutputSectionProps> = ({ outputDetails }) => {
           )}
         </div>
       ) : (
-        <div className="min-h-[200px] flex flex-col items-center justify-center text-slate-400 p-10">
+        <div className="min-h-[200px] flex flex-col items-center justify-center text-slate-400 p-5">
           <Terminal size={40} className="opacity-30 mb-3" />
           <p className="text-center">
             Run your code to see output results here

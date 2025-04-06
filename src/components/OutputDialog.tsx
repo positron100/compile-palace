@@ -46,7 +46,7 @@ const OutputDialog: React.FC<OutputDialogProps> = ({
         </DialogHeader>
         
         <div className={`p-0 overflow-auto ${isMobile ? 'max-h-[60vh]' : 'max-h-[70vh]'} bg-gradient-to-b from-slate-50 to-white rounded-b-xl`}>
-          <div className={`${isMobile ? 'px-2' : 'px-0'}`}>
+          <div className={`${isMobile ? 'px-3' : 'px-4'}`}>
             <OutputSection outputDetails={outputDetails} />
           </div>
           

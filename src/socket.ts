@@ -43,6 +43,15 @@ export const updateRoomCode = (roomId: string, code: string) => {
   }
 };
 
+// Clear room code when leaving
+export const clearRoomCode = (roomId: string) => {
+  if (roomId && roomCodeStore[roomId]) {
+    delete roomCodeStore[roomId];
+    return true;
+  }
+  return false;
+};
+
 // Get stored room code
 export const getRoomCode = (roomId: string): string => {
   return roomCodeStore[roomId] || '';
