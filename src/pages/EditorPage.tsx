@@ -1,4 +1,3 @@
-
 import React, { useEffect, useRef, useState, useCallback } from "react";
 import Client from "../components/Client";
 import Editor from "../components/Editor";
@@ -45,7 +44,7 @@ function EditorPage() {
   const [socketError, setSocketError] = useState(false);
 
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [connectionStatus, setConnectionStatus] = useState("Connecting...");
+  const [connectionStatus, setConnectionStatus] = useState("Connecting to server...");
 
   const username = location.state?.username || "Anonymous";
   const [userCount, setUserCount] = useState(1);
@@ -127,33 +126,29 @@ function EditorPage() {
     });
   }, [username]);
 
-  // Initialize socket connection
   useEffect(() => {
     if (!roomId) return;
     
     setConnectionStatus("Connecting to server...");
+    setSocketConnected(false);
     
     try {
-      // Initialize Socket.IO connection
       const socket = initSocket();
       socketRef.current = socket;
       
       setSocketConnected(true);
       setConnectionStatus("Connected to server");
       
-      // Handle socket connection events
       socket.on('connect', () => {
         setSocketConnected(true);
         setSocketError(false);
         setConnectionStatus("Connected");
         
-        // Join room once connected
         socket.emit(ACTIONS.JOIN, {
           roomId,
           username
         });
         
-        // Track user in local service
         userService.trackUserPresence(roomId, username);
       });
       
@@ -168,7 +163,6 @@ function EditorPage() {
         setConnectionStatus("Disconnected");
       });
       
-      // Handle room events
       socket.on(ACTIONS.JOINED, ({ clients, username: joinedUser, socketId }) => {
         if (joinedUser !== username) {
           toast.success(`${joinedUser} joined the room`);
@@ -183,7 +177,6 @@ function EditorPage() {
         
         setClients(prev => {
           const updatedClients = prev.filter(client => client.socketId !== socketId);
-          // Update user count when a user leaves
           setUserCount(updatedClients.length);
           return updatedClients;
         });
@@ -191,7 +184,6 @@ function EditorPage() {
       
       setInitialized(true);
       
-      // Cleanup function
       return () => {
         if (socketRef.current) {
           socketRef.current.disconnect();
@@ -205,7 +197,6 @@ function EditorPage() {
       setInitialized(true);
       toast.error("Failed to connect to server");
       
-      // Try to get users from local service
       const roomUsers = userService.getRoomUsers(roomId);
       if (roomUsers.length > 0) {
         updateClientsList(roomUsers);

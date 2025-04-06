@@ -1,7 +1,7 @@
 
 import { useEffect, useRef, useCallback } from "react";
 import ACTIONS from "../Actions";
-import { updateRoomCode, getRoomCode } from "../socket";
+import { updateRoomCode, getRoomCode, updateRoomUsers } from "../socket";
 import { toast } from "sonner";
 import { debounce } from "lodash";
 
@@ -121,7 +121,7 @@ export const useCollaboration = ({
     socket.on(ACTIONS.SYNC_RESPONSE, handleRemoteChange);
     socket.on(ACTIONS.SYNC_REQUEST, handleSyncRequest);
     
-    // Request initial code sync when joining
+    // Actively request initial code sync when joining
     setTimeout(() => {
       if (socketRef.current) {
         socketRef.current.emit(ACTIONS.SYNC_REQUEST, { 
@@ -137,12 +137,27 @@ export const useCollaboration = ({
       handleRemoteChange({ code: storedCode, author: 'system' });
     }
     
+    // Track user count for this room
+    socket.on(ACTIONS.JOINED, ({ clients }) => {
+      if (clients && clients.length) {
+        updateRoomUsers(roomIdRef.current, clients.length);
+      }
+    });
+    
+    socket.on(ACTIONS.DISCONNECTED, ({ remainingClients }) => {
+      if (typeof remainingClients === 'number') {
+        updateRoomUsers(roomIdRef.current, remainingClients);
+      }
+    });
+    
     // Cleanup event listeners when component unmounts or roomId changes
     return () => {
       socket.off(ACTIONS.CODE_CHANGE, handleRemoteChange);
       socket.off(ACTIONS.SYNC_CODE, handleRemoteChange);
       socket.off(ACTIONS.SYNC_RESPONSE, handleRemoteChange);
       socket.off(ACTIONS.SYNC_REQUEST, handleSyncRequest);
+      socket.off(ACTIONS.JOINED);
+      socket.off(ACTIONS.DISCONNECTED);
     };
   }, [roomId, username, socketRef, handleRemoteChange, handleSyncRequest]);
 
