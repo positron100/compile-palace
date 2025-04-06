@@ -18,18 +18,23 @@ export const initSocket = (): Socket => {
     socket = io(SERVER_URL, {
       transports: ['websocket'],
       timeout: 10000,
+      reconnectionAttempts: 5,
+      reconnectionDelay: 1000,
     });
     
     socket.on('connect', () => {
       // Socket connected
+      console.log('Socket connected');
     });
     
     socket.on('connect_error', (err) => {
       // Connection error
+      console.error('Connection error:', err);
     });
     
     socket.on('disconnect', () => {
       // Disconnected
+      console.log('Socket disconnected');
     });
   }
   

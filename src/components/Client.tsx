@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
@@ -6,7 +5,7 @@ import { useIsMobile } from '@/hooks/use-mobile';
 
 interface ClientProps {
   username: string;
-  socketId?: string; // Add socket ID for unique identification
+  socketId?: string;
 }
 
 const Client: React.FC<ClientProps> = ({ username, socketId }) => {
@@ -51,13 +50,18 @@ const Client: React.FC<ClientProps> = ({ username, socketId }) => {
   const avatarColor = getColorFromUsername(username || 'User');
   const initials = getInitials(username);
 
+  // Ensure the component only renders when we have a valid username
+  if (!username) {
+    return null;
+  }
+
   return (
     <TooltipProvider>
-      <div className="flex flex-col items-center gap-1 my-1 px-1" key={socketId}>
+      <div className="flex flex-col items-center gap-1 my-1 px-1" key={socketId || username}>
         <Tooltip>
           <TooltipTrigger asChild>
             <Avatar className={`${isMobile ? 'h-10 w-10' : 'h-12 w-12'} border-2 border-white shadow-sm hover:scale-110 transition-transform cursor-pointer`}>
-              <AvatarFallback className={`${avatarColor} text-white text-sm font-semibold rounded-full`}>
+              <AvatarFallback className={`${avatarColor} text-white text-sm font-semibold`}>
                 {initials}
               </AvatarFallback>
             </Avatar>

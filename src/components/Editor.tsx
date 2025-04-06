@@ -37,7 +37,7 @@ const Editor: React.FC<EditorProps> = memo(({
   });
   
   // Setup collaboration features
-  const { handleRemoteChange } = useCollaboration({
+  const { handleRemoteChange, requestCodeSync } = useCollaboration({
     socketRef,
     roomId,
     username,
@@ -58,8 +58,12 @@ const Editor: React.FC<EditorProps> = memo(({
       setTimeout(() => {
         ignoreChangeRef.current = false;
       }, 10);
+    } else if (socketRef.current) {
+      // Explicitly request code sync if we don't have initial code
+      // This helps ensure new users get the latest code
+      requestCodeSync();
     }
-  }, [roomId, onCodeChange, editorRef, ignoreChangeRef]);
+  }, [roomId, onCodeChange, editorRef, ignoreChangeRef, socketRef, requestCodeSync]);
   
   return <textarea id="realtimeEditor"></textarea>;
 });

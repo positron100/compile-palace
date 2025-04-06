@@ -25,6 +25,8 @@ export const useCollaboration = ({
   const previousCodeRef = useRef<string>("");
   const roomIdRef = useRef<string>(roomId);
   const THROTTLE_MS = 500;
+  const syncAttemptRef = useRef<number>(0);
+  const MAX_SYNC_ATTEMPTS = 3;
   
   // Update roomId ref when prop changes
   useEffect(() => {
@@ -66,12 +68,16 @@ export const useCollaboration = ({
       // Notify parent component
       onCodeChange(data.code);
       
+      // Reset sync attempts since we got code
+      syncAttemptRef.current = 0;
+      
       // Show toast only if the author is different from the current user
       if (data.author && data.author !== username) {
         toast.info(`Code updated by ${data.author}`);
       }
     } catch (err) {
       // Error handling
+      console.error('Error applying remote code change:', err);
     } finally {
       // Restore cursor position and scroll state
       editorRef.current.setCursor(cursor);
@@ -107,6 +113,29 @@ export const useCollaboration = ({
     }
   }, [editorRef, roomIdRef, socketRef, username]);
 
+  // Request code sync - can be called multiple times with backoff
+  const requestCodeSync = useCallback(() => {
+    if (syncAttemptRef.current >= MAX_SYNC_ATTEMPTS || !socketRef.current) {
+      return;
+    }
+    
+    // Exponential backoff for retries
+    const delay = syncAttemptRef.current === 0 ? 300 : 1000 * Math.pow(2, syncAttemptRef.current - 1);
+    
+    setTimeout(() => {
+      if (socketRef.current) {
+        // Request code sync from other users
+        socketRef.current.emit(ACTIONS.SYNC_REQUEST, { 
+          roomId: roomIdRef.current,
+          requestor: username
+        });
+        
+        // Increment attempt counter
+        syncAttemptRef.current += 1;
+      }
+    }, delay);
+  }, [roomIdRef, socketRef, username]);
+
   // Subscribe to socket events
   useEffect(() => {
     if (!roomId || !socketRef.current) {
@@ -121,15 +150,11 @@ export const useCollaboration = ({
     socket.on(ACTIONS.SYNC_RESPONSE, handleRemoteChange);
     socket.on(ACTIONS.SYNC_REQUEST, handleSyncRequest);
     
-    // Request initial code sync when joining
-    setTimeout(() => {
-      if (socketRef.current) {
-        socketRef.current.emit(ACTIONS.SYNC_REQUEST, { 
-          roomId: roomIdRef.current,
-          requestor: username 
-        });
-      }
-    }, 500);
+    // Clear attempt counter on new subscription
+    syncAttemptRef.current = 0;
+    
+    // Request initial code sync when joining with retry mechanism
+    requestCodeSync();
     
     // Apply any stored code from local storage
     const storedCode = getRoomCode(roomIdRef.current);
@@ -144,7 +169,7 @@ export const useCollaboration = ({
       socket.off(ACTIONS.SYNC_RESPONSE, handleRemoteChange);
       socket.off(ACTIONS.SYNC_REQUEST, handleSyncRequest);
     };
-  }, [roomId, username, socketRef, handleRemoteChange, handleSyncRequest]);
+  }, [roomId, username, socketRef, handleRemoteChange, handleSyncRequest, requestCodeSync]);
 
   // Setup handlers for editor changes with debouncing
   useEffect(() => {
@@ -197,6 +222,7 @@ export const useCollaboration = ({
 
   return {
     handleRemoteChange,
-    handleSyncRequest
+    handleSyncRequest,
+    requestCodeSync
   };
 };
