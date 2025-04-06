@@ -31,7 +31,7 @@ const OutputDialog: React.FC<OutputDialogProps> = ({
         <DialogHeader className="p-4 border-b bg-gradient-to-r from-purple-600 to-indigo-700 rounded-t-xl">
           <div className="flex justify-between items-center">
             <DialogTitle className="text-white flex items-center gap-2">
-              <Terminal size={18} className="text-white opacity-90" />
+              <Terminal size={18} className="opacity-90" />
               Execution Results
             </DialogTitle>
             <DialogClose asChild>
