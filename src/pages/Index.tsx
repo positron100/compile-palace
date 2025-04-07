@@ -110,7 +110,7 @@ const Index = () => {
       </div>
       
       <footer className="absolute bottom-4 text-center w-full text-sm text-gray-600 z-10">
-        Built with ❤️ by Compile Palace
+        Built with ❤️ by Macrohard
       </footer>
     </div>
   );
