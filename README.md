@@ -1,69 +1,109 @@
-# Welcome to your Lovable project
+Here's the complete draft for your README file based on the structure and content you provided.
 
-## Project info
+---
 
-**URL**: https://lovable.dev/projects/683d9440-fc01-4094-a5d0-46006b58b5f7
+# Cloud Editor
 
-## How can I edit this code?
+Cloud Editor is a real-time collaborative code editor built using the MERN stack and WebSocket technology (Socket.io). It allows multiple users to collaborate on code in real-time within shared rooms.
 
-There are several ways of editing your application.
+## Features
+- **Real-time code collaboration** using WebSocket.
+- **Code Editor** with syntax highlighting and autocompletion powered by Codemirror.
+- **User Rooms**: Create or join rooms with a unique Room ID to collaborate with other users.
+- **Live Notifications**: Instant feedback through toast notifications.
+- **Simple UI**: Responsive and user-friendly interface.
 
-**Use Lovable**
+## Project Structure
 
-Simply visit the [Lovable Project](https://lovable.dev/projects/683d9440-fc01-4094-a5d0-46006b58b5f7) and start prompting.
-
-Changes made via Lovable will be committed automatically to this repo.
-
-**Use your preferred IDE**
-
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
-
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
-
-Follow these steps:
-
-```sh
-# Step 1: Clone the repository using the project's Git URL.
-git clone <YOUR_GIT_URL>
-
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
-
-# Step 3: Install the necessary dependencies.
-npm i
-
-# Step 4: Start the development server with auto-reloading and an instant preview.
-npm run dev
+```
+src
+├── components
+│   ├── Client.js          # Handles client-side user display logic
+│   ├── Editor.js          # Initializes Codemirror and syncs code changes
+├── pages
+│   ├── EditorPage.js      # Main page for the code editor, handles socket events
+│   ├── Home.js            # Landing page for creating and joining rooms
+├── Actions.js             # Contains socket event constants
+├── App.js                 # Main application component
+├── App.css                # Global styles
+├── index.js               # Entry point for the React app
+├── index.css              # Additional styles
+server.js                  # Handles the backend socket server
+socket.js                  # Initializes the socket connection
+.env                       # Environment variables for backend URL and configuration
 ```
 
-**Edit a file directly in GitHub**
+## Dependencies
 
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
+The following dependencies are used in this project:
 
-**Use GitHub Codespaces**
+- `"codemirror": "^5.65.2"`
+- `"nodemon": "^3.1.7"`
+- `"react": "^18.3.1"`
+- `"react-avatar": "^5.0.3"`
+- `"react-dom": "^18.3.1"`
+- `"react-hot-toast": "^2.4.1"`
+- `"react-router-dom": "^6.26.2"`
+- `"react-scripts": "5.0.1"`
+- `"socket.io": "^4.8.0"`
+- `"socket.io-client": "^4.8.0"`
+- `"uuid": "^10.0.0"`
+- `"web-vitals": "^2.1.4"`
 
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
+## Environment Variables
 
-## What technologies are used for this project?
+The application uses a `.env` file to store environment variables. Ensure the following variable is configured:
 
-This project is built with .
+```
+REACT_APP_BACKEND_URL=<your-backend-url>
+```
 
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
+## Usage
 
-## How can I deploy this project?
+1. **Home Page** (`Home.js`):
+   - Users can either create a new room by generating a unique Room ID or join an existing room by entering the Room ID and their username. Room navigation and handling are done via React Router and toast notifications.
 
-Simply open [Lovable](https://lovable.dev/projects/683d9440-fc01-4094-a5d0-46006b58b5f7) and click on Share -> Publish.
+2. **Editor Page** (`EditorPage.js`):
+   - The page initializes WebSocket connections using `socket.js`, handles user connections/disconnections, and synchronizes code in real time between all users in a room. It includes an `Editor.js` component, where Codemirror is used to create the code editor.
 
-## I want to use a custom domain - is that possible?
+3. **Client Component** (`Client.js`):
+   - Displays user avatars and their usernames within the active room.
 
-We don't support custom domains (yet). If you want to deploy your project under your own domain then we recommend using Netlify. Visit our docs for more details: [Custom domains](https://docs.lovable.dev/tips-tricks/custom-domain/)
+4. **Editor Component** (`Editor.js`):
+   - This component integrates Codemirror, handles code changes, and emits events to synchronize code across connected clients.
+
+5. **Socket Initialization** (`socket.js`):
+   - Establishes WebSocket connections with a backend using the URL provided in the `.env` file.
+
+## How to Run
+
+1. Clone the repository:
+   ```bash
+   git clone <repo-url>
+   cd cloud-editor
+   ```
+
+2. Install dependencies:
+   ```bash
+   npm install
+   ```
+
+3. Set up the environment variables in a `.env` file:
+   ```bash
+   REACT_APP_BACKEND_URL=[<your-backend-url>](https://code-editor-f145.onrender.com/)
+   ```
+
+4. Run the application:
+   ```bash
+   npm start
+   ```
+
+   The app will run on [http://localhost:3000](http://localhost:3000) by default.
+
+## License
+
+This project is licensed under the MIT License.
+
+---
+
+Let me know if you need any adjustments!
