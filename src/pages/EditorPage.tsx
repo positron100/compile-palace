@@ -26,6 +26,16 @@ import {
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { getCleanLanguageName } from "../utils/languageUtils";
 import userService from "../services/userService";
+import { supabase } from "@/integrations/supabase/client";
+import { User, Session } from '@supabase/supabase-js';
+import {
+  saveRoomToDatabase,
+  loadRoomFromDatabase,
+  addParticipantToRoom,
+  removeParticipantFromRoom,
+  checkIfRoomEmpty
+} from "../services/roomService";
+import { debounce } from 'lodash';
 
 function EditorPage() {
   const socketRef = useRef(null);
@@ -47,11 +57,71 @@ function EditorPage() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState("Connecting...");
 
-  const username = location.state?.username || "Anonymous";
+  const [user, setUser] = useState<User | null>(null);
+  const [session, setSession] = useState<Session | null>(null);
+  const [profile, setProfile] = useState<any>(null);
+  const [authLoading, setAuthLoading] = useState(true);
+
+  const username = profile?.name || location.state?.username || user?.email || "Anonymous";
   const [userCount, setUserCount] = useState(1);
   
   const lastClientsUpdateRef = useRef(Date.now());
   const clientsUpdateThrottleMs = 2000;
+
+  // Auth check
+  useEffect(() => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      (event, session) => {
+        setSession(session);
+        setUser(session?.user ?? null);
+        setAuthLoading(false);
+      }
+    );
+
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+      setUser(session?.user ?? null);
+      setAuthLoading(false);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  // Fetch profile
+  useEffect(() => {
+    if (user) {
+      supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', user.id)
+        .maybeSingle()
+        .then(({ data }) => {
+          setProfile(data);
+        });
+    }
+  }, [user]);
+
+  // Add participant to room when joining
+  useEffect(() => {
+    if (user && roomId && profile) {
+      addParticipantToRoom(roomId, user.id, profile.name);
+    }
+  }, [user, roomId, profile]);
+
+  // Load existing room code from database
+  useEffect(() => {
+    if (roomId && user) {
+      loadRoomFromDatabase(roomId).then((roomData) => {
+        if (roomData && roomData.code && codeRef.current !== roomData.code) {
+          codeRef.current = roomData.code;
+          if (roomData.language) {
+            const lang = languageOptions.find(l => l.name.toLowerCase() === roomData.language.toLowerCase());
+            if (lang) setLanguage(lang);
+          }
+        }
+      });
+    }
+  }, [roomId, user]);
 
   const handleCompile = async () => {
     setIsCompiling(true);
@@ -73,6 +143,16 @@ function EditorPage() {
       setIsCompiling(false);
     }
   };
+
+  // Debounced save function
+  const debouncedSave = useCallback(
+    debounce((code: string) => {
+      if (roomId && user && code) {
+        saveRoomToDatabase(roomId, code, language.name);
+      }
+    }, 3000),
+    [roomId, user, language]
+  );
 
   const updateClientsList = useCallback((newClients = [], append = false) => {
     const now = Date.now();
@@ -216,11 +296,33 @@ function EditorPage() {
   }, [roomId, username, updateClientsList]);
 
   useEffect(() => {
-    if (initialized && !location.state?.username) {
-      toast.error("Please enter a username to join a room");
-      reactNavigator("/");
+    if (initialized && !user && !authLoading) {
+      toast.error("Please sign in to join a room");
+      reactNavigator("/auth");
     }
-  }, [initialized, location.state?.username, reactNavigator]);
+  }, [initialized, user, authLoading, reactNavigator]);
+
+  // Cleanup when leaving the room
+  useEffect(() => {
+    return () => {
+      if (user && roomId && codeRef.current) {
+        // Save code to database when leaving
+        saveRoomToDatabase(roomId, codeRef.current, language.name);
+        
+        // Mark participant as left
+        removeParticipantFromRoom(roomId, user.id);
+        
+        // Check if room is empty and save final state
+        setTimeout(() => {
+          checkIfRoomEmpty(roomId).then((isEmpty) => {
+            if (isEmpty && codeRef.current) {
+              saveRoomToDatabase(roomId, codeRef.current, language.name);
+            }
+          });
+        }, 1000);
+      }
+    };
+  }, [user, roomId, language]);
 
   const copyRoomId = async () => {
     try {
@@ -231,10 +333,16 @@ function EditorPage() {
     }
   };
 
-  const leaveRoom = () => {
+  const leaveRoom = async () => {
     if (socketRef.current) {
       socketRef.current.emit(ACTIONS.LEAVE, { roomId });
       socketRef.current.disconnect();
+    }
+    
+    // Save code before leaving
+    if (user && roomId && codeRef.current) {
+      await saveRoomToDatabase(roomId, codeRef.current, language.name);
+      await removeParticipantFromRoom(roomId, user.id);
     }
     
     reactNavigator("/");
@@ -295,7 +403,24 @@ function EditorPage() {
   
   SidebarContent.displayName = "SidebarContent";
 
-  if (!location.state?.username && initialized) {
+  // Show loading while checking authentication
+  if (authLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-white">
+        <div className="text-center">
+          <div className="animate-spin h-10 w-10 border-4 border-purple-600 border-t-transparent rounded-full mx-auto mb-4"/>
+          <p className="text-gray-600">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Redirect to auth if not authenticated
+  if (!user) {
+    return <Navigate to="/auth" />;
+  }
+
+  if (!location.state?.username && initialized && !profile) {
     return <Navigate to="/" />;
   }
 
@@ -366,6 +491,7 @@ function EditorPage() {
             username={username}
             onCodeChange={(code) => {
               codeRef.current = code;
+              debouncedSave(code);
             }}
           />
           
