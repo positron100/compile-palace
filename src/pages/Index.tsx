@@ -1,5 +1,6 @@
 
 import React, { useEffect, useRef, useState } from 'react';
+import { useNavigate as useRouterNavigate } from 'react-router-dom';
 import { v4 as uuidv4 } from 'uuid';
 import { toast } from "sonner";
 import { supabase } from '@/integrations/supabase/client';
@@ -9,16 +10,30 @@ import { LaptopIntro } from '@/components/start/LaptopIntro';
 import { RoomJoinCard } from '@/components/room/RoomJoinCard';
 import { useMagnetic } from '@/hooks/use-magnetic';
 import { useAuth } from '@/context/AuthContext';
+import { useReducedMotion } from '@/hooks/use-reduced-motion';
 import { useStageTransitionNavigate } from '@/hooks/use-stage-transition-navigate';
+import { startStageTransition, supportsViewTransitions } from '@/lib/stageTransition';
 
 const Index = () => {
   const navigate = useStageTransitionNavigate();
+  const routerNavigate = useRouterNavigate();
+  const reduceMotion = useReducedMotion();
   const { user, loading } = useAuth();
   const [roomId, setRoomId] = React.useState('');
   const [username, setUsername] = React.useState('');
   const [profile, setProfile] = useState<any>(null);
   const ctaMagnetic = useMagnetic<HTMLButtonElement>({ strength: 10 });
   const signingOutRef = useRef(false);
+  // Sign-out doesn't change route (Room Join and Start both render at "/"),
+  // so the swap is driven by AuthContext's `user` flipping to null — which
+  // happens on Supabase's own async auth-state-change event, outside our
+  // control and NOT synchronized with the view transition's flushSync. Left
+  // alone, that repaint lands before startStageTransition even captures its
+  // "old" snapshot: Start Screen flashes in first, then the circle plays over
+  // an already-revealed page. Holding the Room Join render here — regardless
+  // of what `user` says — until our own flushSync releases it keeps the
+  // "old" snapshot correct, so the circle is what actually reveals Start.
+  const [holdRoomView, setHoldRoomView] = useState(false);
 
   useEffect(() => {
     if (!user) {
@@ -40,7 +55,9 @@ const Index = () => {
 
   const createNewRoom = (e: React.MouseEvent<HTMLButtonElement>) => {
     e.preventDefault();
-    const id = uuidv4();
+    // 15 hex chars off a v4 UUID (plenty of entropy for a room code),
+    // grouped 5-5-5 for readability — e.g. "a1b2c-3d4e5-f6a7b".
+    const id = uuidv4().replace(/-/g, "").slice(0, 15).match(/.{1,5}/g)!.join("-");
     setRoomId(id);
     // Set toast duration to 3 seconds (3000ms)
     toast.success("New Room Created", { duration: 3000 });
@@ -60,7 +77,7 @@ const Index = () => {
     });
   };
 
-  const handleSignOut = async (e: React.MouseEvent<HTMLButtonElement>) => {
+  const handleSignOut = (e: React.MouseEvent<HTMLButtonElement>) => {
     // A fast double-click (or the magnetic wrapper re-firing) called this
     // twice in a row: the first signOut() succeeds and clears the local
     // session, the second then fails with "Auth session missing!" — a
@@ -70,35 +87,62 @@ const Index = () => {
 
     const r = e.currentTarget.getBoundingClientRect();
     const origin = { x: r.left + r.width / 2, y: r.top + r.height / 2 };
-    const { error } = await supabase.auth.signOut();
-    // Reset unconditionally: this component stays mounted across the sign-out
-    // (same "/" route, just re-renders unauthenticated), so a guard that only
-    // clears on the error path stays stuck "true" forever after any
-    // successful sign-out, silently blocking every sign-out after the first.
-    signingOutRef.current = false;
-    if (error) {
+    // Hold Room Join on screen before signing out — the moment
+    // supabase.auth.signOut() resolves, AuthContext's own listener flips
+    // `user` to null on its own schedule, independent of the reveal below.
+    setHoldRoomView(true);
+
+    // AuthContext's SIGNED_OUT event is authoritative for auth state; this
+    // only decides where the now-unauthenticated app lands. Room Join's
+    // sign-out returns to the starting page (this same route renders the
+    // start screen once unauthenticated) via the same forward-growing circle
+    // as Start -> Auth. Releasing the hold has to happen inside the same
+    // flushSync as the router navigate — otherwise the two repaints
+    // (Room Join -> Start) land on either side of the transition's captured
+    // snapshots instead of inside it, and the circle plays over a page
+    // that's already switched.
+    const release = () => {
+      setHoldRoomView(false);
+      routerNavigate('/', { replace: true });
+    };
+    // The circle starts on click, not after the network round trip —
+    // supabase.auth.signOut() runs alongside it instead of gating it, so
+    // there's no longer a dead beat between the click and the animation
+    // starting. If it genuinely fails (not just "already signed out"), the
+    // AuthContext session never flips and this route re-renders Room Join
+    // again once the circle settles, with the toast explaining why.
+    if (reduceMotion || !supportsViewTransitions()) {
+      release();
+    } else {
+      // Slower than Start -> Auth's own 900ms default (stageTransition.ts) —
+      // same circle, same easing, just more deliberate here so sign-out
+      // doesn't feel like a snap.
+      void startStageTransition('circle', 'forward', origin, release, 1300);
+    }
+
+    void supabase.auth.signOut().then(({ error }) => {
+      // Reset unconditionally: this component stays mounted across the
+      // sign-out (same "/" route, just re-renders unauthenticated), so a
+      // guard that only clears on the error path stays stuck "true" forever
+      // after any successful sign-out, silently blocking every sign-out
+      // after the first.
+      signingOutRef.current = false;
       // No local session to sign out of == already logged out. Treat as
       // success rather than surfacing an error for a state the user already
       // wants.
-      if (!/auth session missing/i.test(error.message)) {
+      if (error && !/auth session missing/i.test(error.message)) {
         toast.error(error.message);
-        return;
       }
-    }
-    // AuthContext's SIGNED_OUT event is authoritative for auth state; this
-    // navigate only decides where the now-unauthenticated app lands. Room
-    // Join's sign-out returns to the starting page (this same route renders
-    // the start screen once unauthenticated) via the circular reveal in
-    // reverse — the current screen closes back into the start environment,
-    // same choreography as CloudBook's theme toggle played backward.
-    navigate('/', { shape: 'circle', direction: 'reverse', origin, replace: true });
+    });
   };
 
   // Auth state is still restoring — avoid a flash of the wrong screen.
   if (loading) return null;
 
-  // Starting screen: laptop/code intro leading into the auth experience
-  if (!user) {
+  // Starting screen: laptop/code intro leading into the auth experience.
+  // `holdRoomView` keeps Room Join rendered a beat past `user` going null so
+  // the sign-out circle (handleSignOut above) is what visibly reveals this.
+  if (!user && !holdRoomView) {
     return (
       <div className="min-h-screen flex items-center justify-center cp-atmosphere relative overflow-hidden px-6 sm:px-8 py-10">
         <div className="relative z-10 flex flex-col items-center gap-8 w-full max-w-md">
@@ -160,7 +204,16 @@ const Index = () => {
   }
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center cp-atmosphere relative overflow-hidden px-6 sm:px-8 py-10">
+    // Same wrapper shape as Auth.tsx's (items-center, no flex-col, footer
+    // taken OUT of flow) — not a coincidence: the Auth -> Room transform
+    // holds RoomJoinCard inside Auth's own centered box mid-sweep, then hands
+    // off here. An in-flow footer here (mt-6, part of the flex column) would
+    // consume vertical space Auth's centering never accounted for, shifting
+    // the whole centered group up the instant this page took over — a real,
+    // measured 22px jump (auth-stage__viewport y=178 -> room-stage__viewport
+    // y=156), not a rounding artifact. Matching the wrapper exactly removes
+    // the discrepancy instead of papering over it with an offset.
+    <div className="min-h-screen flex items-center justify-center cp-atmosphere relative overflow-hidden px-6 sm:px-8 py-10">
       <div className="relative z-10 w-full">
         <RoomJoinCard
           roomId={roomId}
@@ -189,7 +242,7 @@ const Index = () => {
         </ul>
       </div>
 
-      <footer className="relative z-10 text-center text-sm text-gray-600 mt-6">
+      <footer className="absolute bottom-4 text-center w-full text-sm text-gray-600 z-10">
         Built with ❤️ by Macrohard
       </footer>
     </div>

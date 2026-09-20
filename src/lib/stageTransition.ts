@@ -8,12 +8,16 @@ import { flushSync } from "react-dom";
  *     (CloudBook/frontend/src/lib/themeTransition.ts): View Transitions API
  *     + a WAAPI circle grown/shrunk on the `::view-transition-{old,new}(root)`
  *     pseudo-element from an origin point, radius = hypot to the farthest
- *     viewport corner, 900ms, cubic-bezier(0.65, 0, 0.35, 1). The edge is
- *     softened with a radial-gradient `mask-image` (`#000 78%, transparent
- *     100%`) — the same feather CloudBook's OpeningScene uses on its
- *     `-webkit-mask`/`mask` — with a hard `clip-path: circle()` fallback
- *     (CloudBook's own theme reveal, which has no feather) on browsers
- *     without mask-image support.
+ *     viewport corner, 900ms, cubic-bezier(0.65, 0, 0.35, 1) — the same hard
+ *     `clip-path: circle()` CloudBook itself uses (no mask feather: masking a
+ *     top-layer view-transition pseudo-element is not reliably supported, so
+ *     this sticks to the exact mechanism already proven there). Circle-
+ *     forward (Start -> Auth) also gets a subtle indigo/atmosphere `filter`
+ *     tint on `::view-transition-new(root)` (index.css) — `filter` is the one
+ *     CSS mechanism that actually paints inside the browser's top layer,
+ *     where view-transition pseudo-elements live; a regular DOM overlay
+ *     cannot, since the top layer always paints above all regular content
+ *     regardless of z-index.
  *
  *   "rect" — TextUtils_enhanced's intro/theme reveal geometry
  *     (TextUtils_enhanced/src/styles/global.css, `@keyframes intro-geo`):
@@ -25,13 +29,12 @@ import { flushSync } from "react-dom";
  *     snapshot instead, since we're revealing a different ROUTE, not an
  *     already-mounted page underneath).
  *
- *   "curtain" — Auth -> Room only. Continues this app's own AuthCard login/
- *     register curtain (components/auth/AuthCard.css): a rounded-leading-edge
- *     sweep, not a fade/wipe/rect reveal. 720ms, the curtain's own
- *     cubic-bezier(0.65, 0, 0.35, 1) easing, swept horizontally (vertically
- *     under 900px, matching AuthCard's own mobile breakpoint).
+ * Auth -> Room does NOT go through here — it reuses AuthCard's own actual
+ * curtain DOM/CSS directly (components/auth/AuthCard.tsx's `roomStage` prop,
+ * AuthCard.css's `[data-mode="room"]` rules), so the auth CARD itself is what
+ * visually becomes the room card, not a route-level snapshot sweep.
  *
- * All three are adaptations of the same underlying technique CloudBook
+ * Both remaining shapes are adaptations of the same underlying technique CloudBook
  * already uses: run the navigation inside `document.startViewTransition`,
  * then animate the resulting pseudo-elements. Falls back to a plain,
  * unanimated navigation when the API is unavailable or the caller didn't ask
@@ -43,7 +46,7 @@ export interface RevealOrigin {
   y: number;
 }
 
-export type RevealShape = "circle" | "rect" | "curtain";
+export type RevealShape = "circle" | "rect";
 export type RevealDirection = "forward" | "reverse";
 
 interface ViewTransitionLike {
@@ -59,15 +62,10 @@ export function supportsViewTransitions(): boolean {
 
 const CIRCLE_DURATION_MS = 900;
 const CIRCLE_EASING = "cubic-bezier(0.65, 0, 0.35, 1)";
-const RECT_DURATION_MS = 1150;
+// Room -> Editor (and back) only, both directions — slowed from 1150ms so
+// the reveal reads as something to watch, not just a load flicker.
+const RECT_DURATION_MS = 1850;
 const RECT_EASING = "cubic-bezier(0.62, 0, 0.15, 1)";
-const CURTAIN_DURATION_MS = 720;
-const CURTAIN_EASING = "cubic-bezier(0.65, 0, 0.35, 1)";
-// AuthCard.css's own --bulge: clamp(2rem, 7vw, 5rem) — the curtain's rounded
-// leading edge, reused here so the route-level sweep reads as the same
-// curtain, not a different shape that happens to share a name.
-const CURTAIN_BULGE = "clamp(2rem, 7vw, 5rem)";
-const CURTAIN_MOBILE_BREAKPOINT = 900;
 
 // Module-scoped, not per-call: overlapping navigations (a double-click, a
 // fast back-and-forth) must never each hold their own full-page GPU
@@ -75,43 +73,20 @@ const CURTAIN_MOBILE_BREAKPOINT = 900;
 let activeTransition: ViewTransitionLike | null = null;
 let activeAnimation: Animation | null = null;
 
-const supportsMaskReveal =
-  typeof CSS !== "undefined" &&
-  !!CSS.supports &&
-  (CSS.supports("mask-image", "radial-gradient(#000, transparent)") ||
-    CSS.supports("-webkit-mask-image", "radial-gradient(#000, transparent)"));
+function circleEndRadius(origin: RevealOrigin): number {
+  return Math.hypot(
+    Math.max(origin.x, window.innerWidth - origin.x),
+    Math.max(origin.y, window.innerHeight - origin.y),
+  );
+}
 
-/** Hard-edged clip-path circle — CloudBook's actual theme-reveal fallback. */
-function buildCircleClipFrames(origin: RevealOrigin, endRadius: number): Keyframe[] {
+/** Hard-edged clip-path circle — CloudBook's actual theme-reveal mechanism. */
+function buildCircleFrames(origin: RevealOrigin): Keyframe[] {
+  const endRadius = circleEndRadius(origin);
   return [
     { clipPath: `circle(0px at ${origin.x}px ${origin.y}px)` },
     { clipPath: `circle(${endRadius}px at ${origin.x}px ${origin.y}px)` },
   ];
-}
-
-/**
- * Soft-edged circle via `mask-image`, feathered the way CloudBook's
- * OpeningScene softens its own reveal hole (`transparent 78% -> #000 100%`,
- * here inverted since a mask's opaque area is what stays visible). The end
- * radius overshoots by 15% so the 22%-wide feather band still fully clears
- * the farthest viewport corner.
- */
-function buildCircleMaskFrames(origin: RevealOrigin, endRadius: number): Keyframe[] {
-  const grownRadius = endRadius * 1.15;
-  const gradient = (r: number) =>
-    `radial-gradient(circle ${r}px at ${origin.x}px ${origin.y}px, #000 78%, transparent 100%)`;
-  return [
-    { maskImage: gradient(0), WebkitMaskImage: gradient(0) },
-    { maskImage: gradient(grownRadius), WebkitMaskImage: gradient(grownRadius) },
-  ];
-}
-
-function buildCircleFrames(origin: RevealOrigin): Keyframe[] {
-  const endRadius = Math.hypot(
-    Math.max(origin.x, window.innerWidth - origin.x),
-    Math.max(origin.y, window.innerHeight - origin.y),
-  );
-  return supportsMaskReveal ? buildCircleMaskFrames(origin, endRadius) : buildCircleClipFrames(origin, endRadius);
 }
 
 /** TextUtils' `@keyframes intro-geo`, reproduced as clip-path insets. */
@@ -122,26 +97,6 @@ function buildRectFrames(): Keyframe[] {
     { clipPath: "inset(calc(50% - 24px) calc(50% - 24px) calc(50% - 24px) calc(50% - 24px) round 12px)", offset: 0.32 },
     { clipPath: "inset(calc(50% - 24px) 0px calc(50% - 24px) 0px round 8px)", offset: 0.64 },
     { clipPath: "inset(0px 0px 0px 0px round 0px)", offset: 1 },
-  ];
-}
-
-/**
- * AuthCard's login/register curtain, continued at route scale: a sweep with
- * a rounded leading edge, not a fade or a rect reveal. Horizontal (left ->
- * right) on desktop; vertical under CURTAIN_MOBILE_BREAKPOINT, matching
- * AuthCard.css's own mobile axis swap.
- */
-function buildCurtainFrames(): Keyframe[] {
-  const mobile = window.innerWidth < CURTAIN_MOBILE_BREAKPOINT;
-  if (mobile) {
-    return [
-      { clipPath: `inset(100% 0% 0% 0% round ${CURTAIN_BULGE} ${CURTAIN_BULGE} 0 0)` },
-      { clipPath: "inset(0% 0% 0% 0% round 0)" },
-    ];
-  }
-  return [
-    { clipPath: `inset(0% 100% 0% 0% round 0 ${CURTAIN_BULGE} ${CURTAIN_BULGE} 0)` },
-    { clipPath: "inset(0% 0% 0% 0% round 0)" },
   ];
 }
 
@@ -157,6 +112,10 @@ export async function startStageTransition(
   direction: RevealDirection,
   origin: RevealOrigin | null,
   runNavigation: () => void,
+  /** Overrides the shape's own default duration — same easing/mechanism,
+   *  just paced differently for a specific call site (e.g. sign-out's circle
+   *  wants to read slower than Start -> Auth's). */
+  durationOverrideMs?: number,
 ): Promise<void> {
   if (!supportsViewTransitions()) {
     runNavigation();
@@ -225,11 +184,6 @@ export async function startStageTransition(
     frames = forward ? grow : [...grow].reverse();
     durationMs = CIRCLE_DURATION_MS;
     easing = CIRCLE_EASING;
-  } else if (shape === "curtain") {
-    const grow = buildCurtainFrames();
-    frames = forward ? grow : [...grow].reverse();
-    durationMs = CURTAIN_DURATION_MS;
-    easing = CURTAIN_EASING;
   } else {
     const grow = buildRectFrames();
     frames = forward ? grow : grow.map((f, i) => ({ ...grow[grow.length - 1 - i], offset: f.offset }));
@@ -242,7 +196,12 @@ export async function startStageTransition(
   // already been swapped in underneath.
   const pseudoElement = forward ? "::view-transition-new(root)" : "::view-transition-old(root)";
 
-  const animation = root.animate(frames, { duration: durationMs, easing, pseudoElement, fill: "both" });
+  const animation = root.animate(frames, {
+    duration: durationOverrideMs ?? durationMs,
+    easing,
+    pseudoElement,
+    fill: "both",
+  });
   activeAnimation = animation;
   ownAnimation = animation;
   animation.finished

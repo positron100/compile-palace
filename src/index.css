@@ -316,3 +316,15 @@
 :root[data-stage-transition$="-reverse"]::view-transition-new(root) {
   z-index: 1;
 }
+
+/* Circle-forward (Start -> Auth) only: a barely-there warm/indigo nudge on
+   the growing layer itself. `filter` is the one CSS mechanism that can still
+   paint something on a view-transition pseudo-element — these live in the
+   browser's top layer, which always renders above all regular DOM regardless
+   of z-index, so a separate overlay element (tried first) can never be seen
+   over it. Kept deliberately subtle: the revealed page is Auth's own real
+   content, which already carries the app's .cp-atmosphere gradient, so this
+   is a finishing touch, not the thing doing the "not a flat disc" work. */
+:root[data-stage-transition="circle-forward"]::view-transition-new(root) {
+  filter: saturate(1.08) brightness(1.015);
+}

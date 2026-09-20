@@ -5,6 +5,9 @@ import { RegisterForm } from "./RegisterForm";
 import "./AuthCard.css";
 
 export type AuthMode = "login" | "register";
+/** The stage can also be mid/post the Auth -> Room transform — a third
+ *  position on the same curtain, not a new mechanism. */
+export type AuthStage = AuthMode | "room";
 
 const COPY = {
   login: {
@@ -39,36 +42,70 @@ function AuthSwitchCta({ onClick, children }: { onClick: () => void; children: R
   );
 }
 
+interface AuthCardProps {
+  mode: AuthMode;
+  onSwitch: (mode: AuthMode) => void;
+  /** Set once the Auth -> Room transform is under way (see Auth.tsx). Which
+   *  side (login/register) it's sweeping FROM — the curtain's room-bound
+   *  target sits on the opposite side, so the sweep always crosses full
+   *  coverage regardless of which form the user completed. */
+  roomStage?: { entry: AuthMode; active: boolean } | null;
+  /** Rendered inside the same curtain viewport as the forms — mounted a
+   *  frame before `roomStage.active` flips so the CSS transition has a
+   *  "before" state to animate from, exactly like login/register already do
+   *  by staying mounted always. */
+  roomContent?: ReactNode;
+  /** Fires when the curtain's own transform finishes settling into "room" —
+   *  the caller's cue that the reveal is visually complete. */
+  onRoomRevealed?: () => void;
+}
+
 /**
  * The authentication stage — a fixed-size clipping viewport. The outer box
- * never resizes between login and register; only the layers inside move, and
- * only on transforms.
+ * never resizes between login/register/room; only the layers inside move,
+ * and only on transforms.
  *
  * The transition is a CURTAIN SWEEP: a full-width accent surface rests half
  * off one edge and, on a mode change, slides across to the opposite edge,
  * fully covering the card at the midpoint, while the welcome copy rides the
- * same sweep and the two forms cross-fade underneath. All CSS, driven by
- * `data-mode`; both forms stay mounted (no remount-to-switch) and the
- * inactive side is set `inert` so it takes no focus or pointer.
+ * same sweep and the forms cross-fade underneath. All CSS, driven by
+ * `data-mode`; every side stays mounted (no remount-to-switch) and the
+ * inactive side is set `inert` so it takes no focus or pointer. Auth -> Room
+ * reuses this exact mechanism: `roomContent` is a third side on the same
+ * curtain (see AuthCard.css's `[data-mode="room"]` rules), not a separate
+ * animation system.
  */
-export function AuthCard({ mode, onSwitch }: { mode: AuthMode; onSwitch: (mode: AuthMode) => void }) {
+export function AuthCard({ mode, onSwitch, roomStage, roomContent, onRoomRevealed }: AuthCardProps) {
   const rootRef = useRef<HTMLElement>(null);
-  const isRegister = mode === "register";
+  const stage: AuthStage = roomStage?.active ? "room" : mode;
+  const isRegister = stage === "register";
 
   useEffect(() => {
     const root = rootRef.current;
     if (!root) return;
     root.querySelectorAll<HTMLElement>("[data-auth-side]").forEach((el) => {
-      el.inert = el.dataset.authSide !== mode;
+      el.inert = el.dataset.authSide !== stage;
     });
-  }, [mode]);
+  }, [stage]);
+
+  useEffect(() => {
+    if (stage !== "room" || !onRoomRevealed) return;
+    const curtain = rootRef.current?.querySelector<HTMLElement>(".auth-stage__curtain");
+    if (!curtain) return;
+    const onEnd = (e: TransitionEvent) => {
+      if (e.propertyName === "transform") onRoomRevealed();
+    };
+    curtain.addEventListener("transitionend", onEnd);
+    return () => curtain.removeEventListener("transitionend", onEnd);
+  }, [stage, onRoomRevealed]);
 
   return (
     <section
       ref={rootRef}
       className="auth-stage"
-      data-mode={mode}
-      aria-label={isRegister ? "Create an account" : "Log in"}
+      data-mode={stage}
+      data-room-entry={roomStage?.entry}
+      aria-label={stage === "room" ? "Joining your room" : isRegister ? "Create an account" : "Log in"}
     >
       <div className="auth-stage__viewport glass-primary">
         <div data-auth-side="register" className="auth-stage__form auth-stage__form--register">
@@ -77,6 +114,11 @@ export function AuthCard({ mode, onSwitch }: { mode: AuthMode; onSwitch: (mode: 
         <div data-auth-side="login" className="auth-stage__form auth-stage__form--login">
           <LoginForm />
         </div>
+        {roomContent && (
+          <div data-auth-side="room" className="auth-stage__room">
+            {roomContent}
+          </div>
+        )}
 
         <div className="auth-stage__curtain" aria-hidden="true" />
 

@@ -133,6 +133,7 @@ export function LaptopIntro({ loop = false }: LaptopIntroProps) {
         <div className="laptop__base">
           <div className="laptop__trackpad" />
         </div>
+        <div className="laptop__shell" />
       </div>
       {!loop && (
         <p className="laptop-scene__tagline" data-visible={ready || undefined}>

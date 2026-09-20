@@ -1,8 +1,8 @@
-import { type FormEvent } from "react";
+import { useEffect, useRef, type FormEvent } from "react";
 import { KeyRound, User as UserIcon, LogOut, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { AuthField } from "@/components/auth/AuthField";
-import { LaptopIntro } from "@/components/start/LaptopIntro";
+import { useRoomLaptopSlot } from "@/context/RoomLaptopContext";
 import { useMagnetic } from "@/hooks/use-magnetic";
 import "./RoomJoinCard.css";
 
@@ -54,6 +54,28 @@ export function RoomJoinCard({
   joining = false,
 }: RoomJoinCardProps) {
   const magnetic = useMagnetic<HTMLDivElement>({ strength: 10 });
+  const laptopSlotRef = useRef<HTMLDivElement>(null);
+  const { registerSlot, releaseSlot } = useRoomLaptopSlot();
+
+  // RoomJoinCard mounts twice during Auth -> Room (Auth.tsx's transient
+  // curtain-sweep preview, then the real page here on "/") — two separate
+  // React trees. Rather than each rendering its own <LaptopIntro>, which
+  // would restart the open/type/compile sequence from scratch on the real
+  // mount (the "double open" glitch), this div is only a layout-reserving
+  // placeholder: registering it hands RoomLaptopProvider's ONE persistent,
+  // shared LaptopIntro (rendered once at the App root, never here) the
+  // position to track, so it's already mid-animation right here for the
+  // whole curtain sweep — not popping in fresh after the handoff. Releasing
+  // on unmount (only if we're still the registered slot — a newer mount's
+  // registration must win a race against our own cleanup) matters just as
+  // much as registering, so the tracked position doesn't linger on a node
+  // about to be detached.
+  useEffect(() => {
+    const el = laptopSlotRef.current;
+    if (!el) return;
+    registerSlot(el);
+    return () => releaseSlot(el);
+  }, [registerSlot, releaseSlot]);
 
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault();
@@ -63,8 +85,20 @@ export function RoomJoinCard({
   return (
     <div className="room-stage">
       <div className="room-stage__viewport">
-        <div className="room-stage__laptop">
-          <LaptopIntro loop />
+        <div className="room-stage__laptop" ref={laptopSlotRef}>
+          {/* Static, invisible spacer — NOT a second LaptopIntro. Reserves
+              the exact box the real (overlaid) laptop occupies, open-state
+              sized, so this now-otherwise-empty placeholder's measured rect
+              (RoomLaptopContext's getBoundingClientRect polling) is correct.
+              Plain CSS classes only, no JS state machine, so it can't itself
+              become a second running instance. */}
+          <div className="laptop-scene" style={{ visibility: "hidden" }} aria-hidden="true">
+            <div className="laptop laptop--open">
+              <div className="laptop__screen" />
+              <div className="laptop__hinge" />
+              <div className="laptop__base" />
+            </div>
+          </div>
         </div>
 
         <div className="room-stage__form glass-primary">

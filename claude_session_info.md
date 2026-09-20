@@ -1,139 +1,251 @@
 # Claude session handover — Compile Palace
 
-Session date: 2026-09-20
-Scope: motion/glass/form-consistency pass across Start → Auth → Room → Editor, plus a
-sign-out routing fix and a laptop-intro rendering fix. Full plan lives at the end of this
-file for reference; this doc is the practical handover.
+Session dates: 2026-09-20 to 2026-09-21 (multi-day, continuous conversation).
+Scope: Phase 1 — laptop closing animation (frozen, prior work). Phase 2 —
+form-field interaction audit (frozen, prior work, no net change). **Phase 3
+(this session's main work)** — Start→Auth circular reveal, Auth→Room curtain
+reuse (with a laptop continuity bug that took several iterations to actually
+fix), sign-out reveal, Room→Editor timing/Room ID polish. Project root is
+`C:\My Programs\compile-palace`.
 
-## What changed, by area
+## Phase 1 — Laptop closing animation (COMPLETE, FROZEN)
 
-### 1. Sign-out routing (small fix, found first)
-`EditorPage.tsx`'s `handleSignOut` navigated to `/auth` instead of `/` — Room Join's own
-sign-out already went to `/`. Both now land on `/` (the starting screen renders itself
-unauthenticated, no separate route).
+Files: `src/components/start/LaptopIntro.tsx`, `.css`. Root cause was a
+`perspective-origin`/fold-pivot mismatch plus a hinge/base width step; fixed
+with a `.laptop__shell` closed-state overlay (short, bottom-anchored bar, not
+a full-height slab). Final state: `.laptop__screen` rotation
+`transform 900ms cubic-bezier(0.34,0,0.1,1)`, shell opacity
+`400ms cubic-bezier(0.45,0,0.55,1) 500ms`. **User confirmed frozen — do not
+touch the opening/closing choreography itself.** (This session DID touch
+`.laptop__screen`'s `aspect-ratio`, see Phase 3 micro-fixes below — that's a
+proportions tweak, not the choreography.)
 
-### 2. Transitions (`src/lib/stageTransition.ts`, `src/pages/Auth.tsx`, `src/index.css`)
-- **Circle** (Start↔Auth, sign-out reverse): 700ms→900ms, edge softened with an animated
-  radial-gradient `mask-image` (`#000 78%→transparent 100%`, ported from CloudBook's
-  `OpeningScene` feather technique) with a hard `clip-path: circle()` fallback behind a
-  `CSS.supports` check.
-- **Rect** (Room→Editor): 1000ms→1150ms, geometry/easing unchanged (already correctly
-  mirrored TextUtils' `intro-geo` keyframes).
-- **New `"curtain"` shape** (Auth→Room): the old Auth→Room transform was **not recoverable**
-  — confirmed via `git reflog`/`git stash list`/`git fsck --lost-found`, all empty, and
-  `git log -S` across every plausible term found nothing auth/room-related. It only ever
-  existed in untracked working-tree files. Rebuilt as a continuation of `AuthCard.css`'s own
-  login/register curtain sweep (same bulge/easing tokens), 720ms, horizontal on desktop /
-  vertical under 900px.
+## Phase 2 — Form-field interaction audit (VERIFIED CORRECT, FROZEN)
 
-### 3. Glass + background system (`src/index.css`, `AuthCard.tsx/.css`, `EditorPage.tsx`,
-   `Client.tsx`, `OutputDialog.tsx`)
-- Accent color tokenized as `--cp-accent` (was hardcoded `243 75% 59%` in 7 places).
-- `.cp-atmosphere`: shared static background wash (reused Room Join's proven gradient
-  values) applied to Start/Auth/Room/Editor — gives the glass blur something to diffuse.
-- Auth card viewport → `glass-primary`.
-- Editor sidebar → `glass-secondary`, toolbar → `glass-subtle`, run button → indigo + `cp-lift`.
-- Editor re-paletted purple→indigo throughout (`EditorPage.tsx`, `Client.tsx`,
-  `OutputDialog.tsx`) so the whole journey shares one accent. **CodeMirror/dracula theme
-  left untouched** — the code surface stays crisp and unstyled by this pass.
-- **Bug found and fixed during responsive testing**: the shared glass classes set
-  `position: relative`, which — because they're plain (unlayered) CSS rules sitting after
-  `@tailwind utilities` in the compiled stylesheet — silently beat the mobile `Sheet`
-  component's required `position: fixed` at equal specificity. This made the mobile sidebar
-  sheet invisible (rendered in normal flow instead of sliding in as an overlay). Fixed by
-  removing `position` from the shared glass class entirely and setting it only on the two
-  consumers that actually need a positioning context (`.auth-stage__viewport`,
-  `.room-stage__form`). Positioning is now each consumer's own concern, not baked into the
-  material class — this is the more correct structure going forward too.
+Audited hover/focus/keyboard-focus model across Login/Sign-Up/Room Join —
+already correct via the shared `AuthField` component, no change needed.
+Width token (`--cp-field-max`) tried at `12rem`, user said too short,
+reverted to `18rem`. Net diff zero. See prior session detail if resuming this
+area; not touched this session.
 
-### 4. Form fields (`AuthField.css`, `AuthForm.css`, `RoomJoinCard.css`)
-- Shared geometry tokens: `--cp-field-h`, `--cp-field-radius`, `--cp-field-pad-x`,
-  `--cp-field-max` (18rem, down from 22rem).
-- Hover = magnetic only (added a missing `transition` on `.auth-field__lift` so the
-  magnetic lean eases instead of snapping). Focus/click = lift + shadow (already correct).
-  Added a pressed/compression state via `:has(.auth-field__control:active)`. Keyboard-only
-  accent ring was already correct (`data-kbd-focus` pattern) — no blanket `outline: none`
-  anywhere.
+## Phase 3 — Start→Auth, Auth→Room, Room→Editor polish (THIS SESSION)
 
-### 5. Laptop intro (`src/components/start/LaptopIntro.css`, `.tsx`)
-Two separate bugs here, both confirmed by direct measurement/isolation before fixing —
-**do not re-approximate a fix without re-measuring**, this component has bitten that before:
+### 3a. Start → Auth: CloudBook-style circular reveal
 
-- **Close animation left a gap.** `--lid-angle: 85deg` (5° short of flat) left the lid
-  standing visibly proud of the base as its own raised wedge at every sampled frame, even
-  with the screen content hidden. Confirmed by forcing `--lid-angle` directly via
-  `browser_evaluate` across an 8-angle sweep with transitions disabled. Fixed to `90deg` —
-  now collapses flush into one merged slab.
-- **Terminal/output text rendered washed out ("cut in half").** This was *not* a layout
-  overflow — `scrollHeight === clientHeight` measured correctly in every case. It was a GPU
-  3D-compositing artifact: the open state tilted `.laptop__screen` to `rotateX(6deg)` and
-  counter-rotated `.laptop__display` by `rotateX(-6deg)` to cancel it (a trick to keep code
-  text crisp), and that double-transform inside the shared `perspective`/`preserve-3d`
-  context visibly washed out the lower content (terminal/output) even though computed
-  `opacity` read `1` throughout. Confirmed by isolating each piece via `browser_evaluate`
-  (toggling `backface-visibility`, then flattening the 3D context entirely) until the
-  ghosting disappeared. Fixed by making the open state genuinely flat (`rotateX(0deg)`
-  instead of tilt-then-cancel) and deleting the now-unnecessary counter-rotation — this also
-  directly serves the "higher resolution code" ask, since text now always renders through
-  the plain 2D text path.
-- Also bumped `.laptop__code`/`.laptop__terminal` font sizes (0.7→0.8rem / 0.68→0.76rem,
-  Room's scaled copies proportionally too) and gave the screen more vertical headroom
-  (`aspect-ratio: 16/12.5` → `16/13.75`) for comfortable margin under the output line.
+Reference studied: `C:\My Programs\CloudBook\frontend\src\lib\themeTransition.ts`
+(note: the earlier-given path was wrong twice — not `D:\...` and not the
+originally-stated CloudBook location either; it's under `C:\My Programs\`).
+Mechanism: `document.startViewTransition()` + a WAAPI `clip-path: circle()`
+grown on `::view-transition-new(root)` from the CTA's own center, radius =
+`Math.hypot` to the farthest viewport corner, 900ms,
+`cubic-bezier(0.65,0,0.35,1)`.
 
-## Verified
+Implemented in `src/lib/stageTransition.ts` (`startStageTransition`,
+`RevealShape = "circle" | "rect"`) + `src/hooks/use-stage-transition-navigate.ts`.
+**Two real bugs found and fixed along the way, both worth knowing if this
+code is touched again:**
+1. An earlier attempt added a soft `mask-image` feather + a separate DOM
+   gradient overlay for polish. The **overlay was silently dead code**: the
+   browser renders `::view-transition-*` pseudo-elements in the **top
+   layer**, which always paints above *all* regular DOM regardless of
+   z-index — a plain `position:fixed` div can never appear over it. Reverted
+   to CloudBook's actual mechanism (hard `clip-path: circle()`, no mask, no
+   DOM overlay) — this is what actually fixed "no circle visible at all" for
+   the user's real browser (Chrome 153).
+2. A subtle gradient tint IS still possible, just not via a DOM overlay —
+   applied via `filter` directly on
+   `:root[data-stage-transition="circle-forward"]::view-transition-new(root)`
+   in `src/index.css` (`filter` is the one CSS mechanism that actually
+   affects top-layer content).
 
-- All four transition legs (Start→Auth, Auth→Room, Room→Editor, Sign-out→Start) with a real
-  signed-in Supabase session via Playwright.
-- Glass system across all four screens, editor mobile sheet (post-fix), form hover/click/Tab
-  states, laptop close frame-by-frame (deterministic angle sweep + live loop), laptop text
-  fix on the Start instance (screenshots before/after).
-- Mobile 360/375, desktop 1280/1440, reduced-motion (`prefers-reduced-motion`) — sign-out
-  navigates instantly, laptop settles static, all shapes including the new curtain covered
-  by the existing generic reduced-motion gate in `use-stage-transition-navigate.ts`.
-- `npx tsc --noEmit` clean after every edit.
-- No new dependencies — `package.json`/`package-lock.json` diff is empty. CSS/WAAPI only,
-  `framer-motion` was and remains not installed.
+Direct `/auth` visits while already authenticated skip the animation
+(instant redirect) — only a genuine just-completed login/signup plays it.
+Reduced motion skips it. Verified at 360/390/430/768/1024/1280/1440.
 
-## Known gap / recommended next step
+### 3b. Sign-out → Start: same circle, forward not reverse
 
-The laptop text/ghosting fix was verified thoroughly on the **Start screen** instance
-(non-loop). The **Room Join** instance (`<LaptopIntro loop />`, smaller, downscaled via
-`RoomJoinCard.css` font-size overrides) was *not* re-verified live at the end of this
-session — the test Supabase account (`jeeadvancehopealive2020@gmail.com`) started returning
-consistent `400` on login, most likely rate-limited from repeated sign-in/sign-out cycles
-during testing. This is **not** a regression from any code change — confirmed nothing in the
-auth path was touched this session.
+`Index.tsx`'s `handleSignOut` now uses `shape:'circle'` **forward** (grows,
+matching Start→Auth) rather than the reverse/shrink it used earlier — a
+direct user request ("reuse the same animation as starting screen instead of
+tracing back"). Also fixed a real latency bug: the circle used to wait for
+`await supabase.auth.signOut()` (a network round trip) before starting —
+now the circle starts immediately on click and `signOut()` runs in parallel
+(`.then()`, not awaited first). Duration is slowed specifically for
+sign-out via a new optional `durationOverrideMs` param on
+`startStageTransition` (1300ms vs the shared 900ms default) — Start→Auth's
+own timing is untouched.
 
-The fix itself doesn't structurally depend on which page mounts it: the ghosting fix lives
-entirely in the shared `.laptop__screen`/`.laptop__display` rules in `LaptopIntro.css`
-(the open-angle transform and the removed counter-rotation); `RoomJoinCard.css` only layers
-font-size/margin overrides on top and never touches the transform/rotation mechanics. High
-confidence it carries over identically, but **worth a 30-second live check in Room Join once
-the Supabase rate limit clears** — sign in, watch one full loop, confirm the terminal/output
-lines render crisp with no ghosting, same as the Start screenshots.
+A real vertical-position bug was also found and fixed here: sign-out doesn't
+change route (Room Join and Start both render at `/`), so the swap used to
+be driven by Supabase's async auth-state-change event flipping `user` to
+null — completely outside the view transition's `flushSync`, causing Start
+Screen to flash in before the circle even captured its "before" snapshot.
+Fixed with a `holdRoomView` flag in `Index.tsx` that keeps Room Join
+rendered through the transform, released only inside `startStageTransition`'s
+`flushSync` callback.
 
-## Explicitly not touched
+### 3c. Auth → Room: reusing AuthCard's own Login↔Signup curtain (not a new mechanism)
 
-Supabase schema, room/participant persistence, WebSocket/socket.io, the collaborative editor
-logic, `AuthContext`, `RequireAuth`. CodeMirror config and the dracula theme. The only
-routing touch is `Auth.tsx`'s transition shape argument (`'rect'` → `'curtain'`) and the
-`EditorPage.tsx` sign-out destination fix.
+This was explicitly requested to **not** be a new/separate animation — Room
+Join had to visually feel like "the same auth card transforming," using
+AuthCard's actual curtain sweep (`src/components/auth/AuthCard.tsx`/`.css`),
+not a route-level page transition. Implementation: `AuthCard` gained a third
+`data-mode="room"` state on the same curtain (`AuthStage` type, `roomStage`/
+`roomContent`/`onRoomRevealed` props). `Auth.tsx` mounts a transient,
+non-interactive `RoomJoinCard` copy inside `AuthCard`'s room slot the moment
+login/signup succeeds, flips `data-mode` to `"room"` on the next frame (so
+the CSS transition has a "before" frame — same two-tick trick login/register
+already used), and navigates to `/` only once the curtain's own
+`transitionend` fires. The curtain's target position is always the side
+*opposite* whichever mode it's sweeping from (`data-room-entry`), so it
+crosses full coverage regardless of whether the user just logged in or
+signed up.
 
-## Files touched this session
+Direct `/auth` visits while already authenticated skip straight to `/`, no
+transform (tracked via a `wasUnauthedRef` — only a `user` transitioning
+false→true *during this mount* counts as "just happened here"). Reduced
+motion skips straight through too.
 
-`src/lib/stageTransition.ts`, `src/index.css`, `src/pages/Auth.tsx`, `src/pages/Index.tsx`,
-`src/pages/EditorPage.tsx`, `src/components/auth/AuthCard.tsx`, `AuthCard.css`,
-`AuthField.css`, `src/components/room/RoomJoinCard.css`,
-`src/components/start/LaptopIntro.css`, `src/components/Client.tsx`,
-`src/components/OutputDialog.tsx`.
+**Two real, measured bugs here, both root-caused rather than patched:**
 
-(The working tree also carries pre-existing, already-in-progress Lovable Cloud migration
-edits — `.env`, `index.html`, `src/App.tsx`, `src/components/Editor.tsx`,
-`supabase/config.toml`, `tailwind.config.ts` — that predate this session and were not
-authored by this session. `.env`'s changed values are Supabase anon/publishable keys, public
-by design and RLS-protected, not secrets.)
+1. **Post-animation vertical jump.** `Index.tsx`'s authenticated-branch
+   footer was `position:relative` (`mt-6`, a real flex sibling consuming
+   layout space) while `Auth.tsx`'s footer was `position:absolute` — two
+   different centering calculations for what's supposed to be the same
+   visual slot, producing a real, measured 22px jump (`y:178→156`) the
+   instant the route handed off. Fixed by making Index.tsx's wrapper
+   structurally match Auth.tsx's exactly (footer `absolute`, no `flex-col`).
+   Verified with instrumented `getBoundingClientRect()` reads before/at/after
+   the handoff — all three now identical to the pixel.
+2. **Curtain-mode width transition desync.** A version of this bumped
+   `.auth-stage`'s `max-width` from `56rem` to `60rem` for room mode (to
+   match `RoomJoinCard`'s own natural width) via a CSS `transition`.
+   `max-width` is a layout-triggering property, and transitioning it inside
+   a `justify-content:center` flex parent visibly lagged the curtain's own
+   (compositor-only) `transform` — measured 296ms after the curtain's own
+   `transitionend`, the box had only moved 31 of 64px. Fixed by making the
+   width a **constant 56rem everywhere** (never transitioned) — including
+   changing `RoomJoinCard.css`'s own `.room-stage` from `60rem` to `56rem`
+   so the mid-sweep view and the settled page use one identical value, not
+   two bridged by an animation. (Known trade-off: Room Join's resting width
+   is ~7% narrower than its original design value — accepted deliberately
+   per the user's own "same spatial slot, transition container doesn't
+   change" direction.)
+
+**The laptop "double-open" bug — the hardest part of this session, three
+real architectural iterations before it actually worked:**
+
+The problem: `RoomJoinCard` (containing `<LaptopIntro loop />`) mounts
+*twice* during Auth→Room — Auth.tsx's transient curtain-sweep preview, then
+Index.tsx's real page — two separate React trees, so naively each rendered
+its own `LaptopIntro`, and the real one's mount restarted the whole
+open/type/compile sequence from scratch right as the transient one had
+already been running, reading as a glitchy double-open. **`LaptopIntro.tsx`
+itself was never modified — its internal animation is still the frozen,
+approved Phase-1-era choreography.**
+
+- *Attempt 1 (failed, informative):* a React portal (`createPortal`)
+  re-targeted between the transient and real slot divs, on the theory that
+  changing a portal's *container* preserves the child's React state. This is
+  true in general, but **not** when the old container lives physically
+  inside a page root that's about to be unmounted: the browser's removal of
+  that root is one recursive DOM delete that takes the portaled child's DOM
+  down with it before React gets a chance to relocate it out, regardless of
+  what the fiber tree considers the logical parent. Measured live: a fresh
+  DOM node and a `.laptop--open` reset at the exact handoff, every time —
+  even with an explicit `flushSync`-forced release one tick before
+  navigating.
+- *Final fix:* `src/context/RoomLaptopContext.tsx` (new file) — **not a
+  portal at all**. One `<LaptopIntro loop />` is mounted once, permanently,
+  at the App root (`RoomLaptopProvider` wraps `<AppRoutes/>` in `App.tsx`,
+  alongside `AuthProvider`), rendered as a `position:fixed` overlay that
+  tracks whichever DOM element is currently registered as "the room laptop
+  slot" via `getBoundingClientRect()`, **polled every animation frame**
+  while a slot is registered (so it tracks the slot's own CSS transitions —
+  the curtain's slide-in — smoothly, not just snapping at the end).
+  `RoomJoinCard`'s laptop area (`.room-stage__laptop`) is now just an empty,
+  layout-reserving placeholder that calls `registerSlot`/`releaseSlot` on
+  mount/unmount (compare-and-clear on release, so a newer mount's
+  registration always wins a race against an older mount's cleanup). Since
+  the overlay div never moves in the DOM tree, there is no code path left
+  that can destroy it.
+- *Sizing regression this surfaced, also fixed:* once `.room-stage__laptop`
+  was empty, it collapsed to near-zero natural size (previously its size
+  came entirely from the real `.laptop-scene` that used to render inside
+  it), so the tracked rect — and thus the overlay — was wrong-sized,
+  especially visible on mobile (way oversized, overlapping the form). Fixed
+  two ways: (a) the overlay div reuses the literal `.room-stage__laptop`
+  className so all the existing size-tuning CSS (including the
+  `<=900px` mobile `max-width:14rem` media query) applies to it regardless
+  of where in the DOM it physically lives; (b) the now-empty placeholder
+  renders a **static, invisible** (`visibility:hidden`) spacer reproducing
+  `.laptop-scene > .laptop.laptop--open`'s markup with no JS/animation, purely
+  to give `getBoundingClientRect()` the correct open-state size to measure.
+- **Verified via a DOM-identity probe** (tag every `.laptop-scene` node
+  the first time it's seen via `dataset.probeId`, track unique ids over
+  time) across Login→Room and Signup→Room, both live against a real
+  Supabase account: exactly **one** real animated instance throughout every
+  run, zero resets, zero console errors, at 390/430/1280 widths.
+
+### 3d. Auth→Room curtain timing
+
+`--dur-room: 760ms` (new CSS var in `AuthCard.css`), applied only to the
+`[data-mode="room"]` state rules (curtain, forms, welcome copy, room layer).
+`--dur-curtain` (Login↔Signup, 640ms) is untouched — confirmed via
+screenshot that Login↔Signup is visually identical to before this pass.
+
+### 3e. Room → Editor: slower reveal, shorter Room ID
+
+`src/lib/stageTransition.ts`'s `RECT_DURATION_MS` raised from `1150` to
+`1850` ("let the user savour it") — this is the one shared constant for
+both Room→Editor and Editor→Room (leave), both directions slowed together,
+matching user intent.
+
+`Index.tsx`'s `createNewRoom` now generates a 15-hex-char room ID grouped
+5-5-5 with hyphens (e.g. `9d386-75380-b9442`) instead of the full 36-char
+UUID — `uuidv4().replace(/-/g,"").slice(0,15).match(/.{1,5}/g).join("-")`.
+No validation elsewhere in the codebase depends on the UUID format (checked
+`roomService.ts` and friends), so this was a safe, contained change.
+
+## Known environment caveats (apply to any future session in this repo)
+
+- **Wall-clock timing measurements via browser automation are unreliable in
+  this environment** — both `claude-in-chrome` and, at times, Playwright MCP
+  showed multi-second-inflated gaps for animations that are 900ms–1.8s by
+  CSS declaration. Root cause understood for `claude-in-chrome`: the
+  automated tab's `document.hidden`/backgrounded state stalls WAAPI
+  timelines. Don't trust stopwatch-style live timing from these tools;
+  verify durations by reading the declared CSS/JS constants instead, and use
+  DOM-state instrumentation (attributes, MutationObserver, probe ids) for
+  correctness, not elapsed-time assertions.
+- `claude-in-chrome`'s Chrome **fully quits** if you close its last
+  remaining tab via `tabs_close_mcp` — carried over from Phase 1's note,
+  still true.
+- A live Supabase test account exists and works this session:
+  `pw-test-7731@example.com` / `hunter222` (created fresh this session via
+  the app's own signup flow, since the earlier-documented account was
+  rate-limited). Auto-confirm is enabled on this Supabase project — signup
+  immediately authenticates, no email-confirmation wall.
+
+## Files touched this session (Phase 3)
+
+`src/App.tsx`, `src/context/RoomLaptopContext.tsx` (new),
+`src/lib/stageTransition.ts`, `src/hooks/use-stage-transition-navigate.ts`,
+`src/pages/Auth.tsx`, `src/pages/Index.tsx`,
+`src/components/auth/AuthCard.tsx`, `src/components/auth/AuthCard.css`,
+`src/components/room/RoomJoinCard.tsx`, `src/components/room/RoomJoinCard.css`,
+`src/index.css`, `src/components/start/LaptopIntro.css` (aspect-ratio
+proportions tweak only, not the frozen choreography).
+
+Phase 1/2 files (`LaptopIntro.tsx`'s animation logic, `AuthField.*`) were
+**not** touched this session beyond the noted aspect-ratio tweak.
 
 ## Where to pick this up
 
-The user's original request named the editor redesign as the **next** planned phase, after
-this motion/glass/form pass. Nothing in this session started that work.
+Phase 3 (Start→Auth, sign-out, Auth→Room, Room→Editor/Room-ID polish) is
+functionally complete and verified: zero console errors across every tested
+flow, one laptop instance guaranteed, no layout jumps, Login↔Signup
+unregressed. Explicitly **not** touched/implemented, per user direction:
+Room → Editor's own reveal choreography (only its *duration* changed, not
+its shape/mechanism), the editor itself, WebSocket/Supabase backend, glass
+system, background. No Phase 4 scope discussed yet.

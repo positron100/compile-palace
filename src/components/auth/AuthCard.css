@@ -7,19 +7,40 @@
   --auth-h: 34rem;
   --bulge: clamp(2rem, 7vw, 5rem);
   --dur-curtain: 640ms;
+  /* Auth -> Room only — a little more deliberate than the login/register
+     curtain (--dur-curtain stays untouched). Same easing, same mechanism,
+     applied only to the room-mode state rules below, so login <-> register
+     don't inherit it. */
+  --dur-room: 760ms;
   --ease-curtain: cubic-bezier(0.65, 0, 0.35, 1);
   --accent: var(--cp-accent);
   --accent-fg: 0 0% 100%;
 
   --curtain-login: translateX(-50%);
   --curtain-register: translateX(50%);
+  --curtain-room-from-login: translateX(150%);
+  --curtain-room-from-register: translateX(-150%);
   --copy-exit: translateX(-150%);
   --copy-enter-from: translateX(150%);
   --form-old-exit: translateX(10%);
   --form-new-from: translateX(-10%);
+  --room-enter-from: translateX(6%);
   --bulge-login: 0 var(--bulge) var(--bulge) 0;
   --bulge-register: var(--bulge) 0 0 var(--bulge);
 
+  /* Deliberately constant across login/register/room, never transitioned:
+     the whole point of one shared stage is that its geometry (width, height,
+     centre, radius) does NOT change, only what's inside it does. An earlier
+     version bumped this to 60rem for room mode — max-width is a
+     layout-triggering property, and transitioning it inside this flex
+     (justify-content: center) parent visibly lagged behind the curtain's own
+     (compositor-only) transform: measured 296ms after the curtain's
+     transitionend already fired, the viewport had only crept from 896px to
+     927px of a 896->960px journey — a real, reproducible desync, not
+     rounding noise. Holding width fixed removes the whole class of bug
+     instead of tuning around it. RoomJoinCard's own max-width (60rem, see
+     RoomJoinCard.css) simply renders a touch narrower here — width:100% on
+     its own root absorbs the difference with no overflow. */
   width: 100%;
   max-width: 56rem;
   margin-inline: auto;
@@ -69,6 +90,15 @@
   transform: var(--form-old-exit);
   opacity: 0;
 }
+/* Room mode: both auth forms exit, whichever was active riding the same
+   --form-old-exit it already uses. */
+.auth-stage[data-mode="room"] .auth-stage__form--login,
+.auth-stage[data-mode="room"] .auth-stage__form--register {
+  transform: var(--form-old-exit);
+  opacity: 0;
+  pointer-events: none;
+  transition-duration: var(--dur-room);
+}
 
 /* --- The curtain (z3) --- */
 .auth-stage__curtain {
@@ -88,6 +118,22 @@
 .auth-stage[data-mode="register"] .auth-stage__curtain {
   transform: var(--curtain-register);
   border-radius: var(--bulge-register);
+}
+/* Room: the curtain's target always sits on the OPPOSITE side from whatever
+   mode it's sweeping FROM (data-room-entry, set by Auth.tsx) — that's what
+   guarantees it always crosses full coverage on the way, regardless of
+   whether the user just completed login or register. Flat corners (no
+   bulge): there's no adjacent welcome-copy half for a bulge to face once
+   Room Join takes the full width. */
+.auth-stage[data-mode="room"][data-room-entry="login"] .auth-stage__curtain {
+  transform: var(--curtain-room-from-login);
+  border-radius: 0;
+  transition-duration: var(--dur-room);
+}
+.auth-stage[data-mode="room"][data-room-entry="register"] .auth-stage__curtain {
+  transform: var(--curtain-room-from-register);
+  border-radius: 0;
+  transition-duration: var(--dur-room);
 }
 
 /* --- Welcome copy layer (z4) --- */
@@ -129,6 +175,30 @@
 .auth-stage[data-mode="register"] .auth-stage__copy--register {
   transform: none;
   opacity: 1;
+}
+.auth-stage[data-mode="room"] .auth-stage__copy--login,
+.auth-stage[data-mode="room"] .auth-stage__copy--register {
+  opacity: 0;
+  pointer-events: none;
+  transition-duration: var(--dur-room);
+}
+
+/* --- Room layer (z1, same plane as the forms) --- */
+.auth-stage__room {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  opacity: 0;
+  transform: var(--room-enter-from);
+  transition: transform var(--dur-curtain) var(--ease-curtain), opacity var(--dur-curtain) var(--ease-curtain);
+  pointer-events: none;
+  overflow: hidden;
+}
+.auth-stage[data-mode="room"] .auth-stage__room {
+  opacity: 1;
+  transform: none;
+  pointer-events: auto;
+  transition-duration: var(--dur-room);
 }
 
 .auth-stage__wordmark {
@@ -192,10 +262,13 @@
     --bulge: clamp(1.5rem, 10vw, 3rem);
     --curtain-login: translateY(-72%);
     --curtain-register: translateY(72%);
+    --curtain-room-from-login: translateY(150%);
+    --curtain-room-from-register: translateY(-150%);
     --copy-exit: translateY(-150%);
     --copy-enter-from: translateY(150%);
     --form-old-exit: translateY(10%);
     --form-new-from: translateY(-10%);
+    --room-enter-from: translateY(4%);
     --bulge-login: 0 0 var(--bulge) var(--bulge);
     --bulge-register: var(--bulge) var(--bulge) 0 0;
     max-width: 25rem;
@@ -244,10 +317,12 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .auth-stage,
   .auth-stage__form,
   .auth-stage__curtain,
   .auth-stage__copy,
-  .auth-stage__cta {
+  .auth-stage__cta,
+  .auth-stage__room {
     transition-duration: 0.01ms !important;
   }
 }

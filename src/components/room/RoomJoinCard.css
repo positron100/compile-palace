@@ -1,6 +1,13 @@
 .room-stage {
+  /* Matches AuthCard.css's .auth-stage max-width exactly (56rem) — Auth and
+     Room Join are the same shared transition slot (see AuthCard.tsx's
+     roomStage), and that slot's geometry must not change between the
+     mid-sweep view (RoomJoinCard hosted inside .auth-stage__viewport) and
+     the settled page (RoomJoinCard hosted here, standalone). A mismatch here
+     was a real measured 64px width snap at handoff (896px -> 960px) — one
+     shared constant removes it instead of animating across the gap. */
   width: 100%;
-  max-width: 60rem;
+  max-width: 56rem;
   margin-inline: auto;
 }
 

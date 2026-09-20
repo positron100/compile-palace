@@ -6,6 +6,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { useInactivityLogout } from "@/hooks/use-inactivity-logout";
 import { AuthProvider } from "@/context/AuthContext";
+import { RoomLaptopProvider } from "@/context/RoomLaptopContext";
 import { RequireAuth } from "@/components/RequireAuth";
 import Index from "./pages/Index";
 import NotFound from "./pages/NotFound";
@@ -40,7 +41,9 @@ const App = () => (
       <Sonner />
       <BrowserRouter>
         <AuthProvider>
-          <AppRoutes />
+          <RoomLaptopProvider>
+            <AppRoutes />
+          </RoomLaptopProvider>
         </AuthProvider>
       </BrowserRouter>
     </TooltipProvider>
