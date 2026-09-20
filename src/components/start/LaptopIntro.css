@@ -1,0 +1,268 @@
+.laptop-scene {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.9rem;
+  width: 100%;
+  max-width: 22rem;
+  margin-inline: auto;
+}
+
+.laptop {
+  /* perspective/perspective-origin live HERE, not on .laptop-scene. The lid
+     folds around a hinge at the BOTTOM of this box (transform-origin below
+     on .laptop__screen); the perspective's vanishing point has to sit at
+     that same point, or the 3D projection and the rotation pivot disagree
+     and the fold reads as "the screen rotates toward the viewer" instead of
+     "the lid closes onto the base". .laptop-scene was the wrong place for
+     this — its box also includes the tagline text below the laptop, so the
+     default center-origin vanishing point sat well below the actual hinge.
+
+     Sign matters here: with transform-origin at the BOTTOM (the hinge), a
+     NEGATIVE rotateX swings the top edge toward +Z — i.e. toward the viewer,
+     which is exactly the "screen rotates at the viewer" bug. POSITIVE
+     rotateX swings the top edge away (-Z), which is the physically correct
+     "lid folds back and down onto the base".
+
+     90deg, not a few degrees short: frame-by-frame inspection (forcing
+     --lid-angle directly, transitions off) showed 85deg leaves the lid
+     standing visibly proud of the base as its own raised wedge — never flush
+     — with the dark screen face still exposed at an angle. Only 90deg
+     collapses the lid flat into the base's plane, reading as one compact
+     merged slab instead of two. */
+  --lid-angle: 90deg;
+  position: relative;
+  width: 100%;
+  perspective: 1400px;
+  perspective-origin: 50% 100%;
+  transform-style: preserve-3d;
+}
+
+.laptop__screen {
+  position: relative;
+  transform-origin: bottom center;
+  transform: rotateX(var(--lid-angle));
+  transition: transform 900ms cubic-bezier(0.22, 1, 0.36, 1);
+  /* Taller than a real 16:12.5 laptop panel on purpose — the compiled
+     output line (last content in the stack: dots, 4 code lines, terminal
+     prompt, terminal output) needs headroom below it before .laptop__display's
+     overflow:hidden edge, or it reads as cut off. */
+  aspect-ratio: 16 / 13.75;
+  border-radius: 0.9rem 0.9rem 0.35rem 0.35rem;
+  background: linear-gradient(160deg, hsl(230 45% 14%), hsl(233 55% 8%));
+  border: 1px solid hsl(230 30% 22%);
+  box-shadow: 0 30px 45px -25px hsl(222 84% 5% / 0.5);
+  padding: 0.6rem 0.6rem 0.8rem;
+  backface-visibility: hidden;
+  will-change: transform;
+}
+/* Flat, not a few degrees reclined: a small permanent tilt here needs a
+   counter-rotation on .laptop__display below to keep the text plane
+   readable — and that double transform (tilt the screen, counter-rotate the
+   child, both inside the same preserve-3d context) is what was actually
+   causing the reported "cut in half" look: measured layout showed no
+   overflow, but the terminal/output content rendered visibly washed out —
+   a GPU compositing artifact of that nested 3D transform, confirmed by
+   removing it and watching the ghosting disappear. Flat open avoids the
+   whole mechanism instead of trying to counter it. */
+.laptop--open .laptop__screen {
+  transform: rotateX(0deg);
+}
+
+.laptop__bezel {
+  display: flex;
+  justify-content: center;
+  padding-bottom: 0.35rem;
+}
+.laptop__cam {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: hsl(230 20% 28%);
+}
+
+.laptop__display {
+  position: relative;
+  height: calc(100% - 0.9rem);
+  border-radius: 0.4rem;
+  background: hsl(226 42% 11%);
+  overflow: hidden;
+  padding: 0.75rem 0.9rem;
+  opacity: 0;
+  /* CLOSING uses this (it's the destination rule when .laptop--open is
+     removed): fast, no delay — the code must be fully masked out well
+     before the lid rotation carries it past a believable "open" angle, or
+     it visibly projects onto what's about to become the closed lid's
+     outside. Deliberately NOT the same timing as the opening reveal below. */
+  transition: opacity 180ms ease;
+  backface-visibility: hidden;
+}
+.laptop--open .laptop__display {
+  opacity: 1;
+  /* No counter-rotation needed: .laptop__screen's open state is flat
+     (rotateX(0deg), see above) instead of tilted-then-cancelled, so this
+     layer never needs its own 3D transform. Text renders through the
+     normal flat 2D text path unconditionally — crisp, and without the
+     nested-3D-transform compositing artifact that trick used to cause. */
+  /* OPENING only: wait for the lid to visibly swing open before the screen
+     lights up. */
+  transition: opacity 500ms ease 550ms;
+}
+
+.laptop__dots {
+  display: flex;
+  gap: 0.3rem;
+  margin-bottom: 0.5rem;
+}
+.laptop__dots span {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: hsl(230 20% 30%);
+}
+.laptop__dots span:first-child {
+  background: hsl(0 70% 55% / 0.7);
+}
+.laptop__dots span:nth-child(2) {
+  background: hsl(45 90% 55% / 0.7);
+}
+.laptop__dots span:last-child {
+  background: hsl(140 60% 45% / 0.7);
+}
+
+.laptop__code {
+  margin: 0;
+  font-family: "Fira Code", ui-monospace, SFMono-Regular, Menlo, monospace;
+  /* Fixed, not clamp()/vw-based: a font-size that recomputes to a fractional
+     px value at arbitrary viewport widths anti-aliases softly at small
+     sizes — combined with the screen's 3D context (see .laptop__display),
+     that compounded into visible blur. A stable size rasterizes once and
+     stays crisp regardless of viewport. Bumped from 0.7rem: still fixed,
+     just a bigger fixed value for better legibility. */
+  font-size: 0.8rem;
+  line-height: 1.6;
+  color: hsl(220 15% 78%);
+  white-space: pre;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+}
+.laptop-line {
+  min-height: 1.6em;
+}
+.tok-kw {
+  color: hsl(280 70% 72%);
+}
+.tok-fn {
+  color: hsl(200 90% 70%);
+}
+.tok-var {
+  color: hsl(160 60% 65%);
+}
+.tok-str {
+  color: hsl(40 85% 68%);
+}
+.laptop__caret {
+  display: inline-block;
+  width: 1px;
+  height: 1em;
+  margin-left: 1px;
+  vertical-align: -0.15em;
+  background: hsl(220 15% 78%);
+  animation: laptop-caret-blink 0.9s steps(1, end) infinite;
+}
+@keyframes laptop-caret-blink {
+  50% {
+    opacity: 0;
+  }
+}
+
+.laptop__terminal {
+  margin-top: 0.5rem;
+  padding-top: 0.45rem;
+  border-top: 1px solid hsl(230 25% 22%);
+  font-family: "Fira Code", ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.76rem;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  opacity: 0;
+  transform: translateY(3px);
+  transition: opacity 350ms ease, transform 350ms ease;
+}
+.laptop__terminal[data-phase="compiling"],
+.laptop__terminal[data-phase="output"] {
+  opacity: 1;
+  transform: none;
+}
+.laptop__prompt {
+  color: hsl(220 15% 55%);
+}
+.laptop__output {
+  margin-top: 0.3rem;
+  color: hsl(150 55% 68%);
+  opacity: 0;
+  transform: translateY(2px);
+  transition: opacity 300ms ease 120ms, transform 300ms ease 120ms;
+}
+.laptop__terminal[data-phase="output"] .laptop__output {
+  opacity: 1;
+  transform: none;
+}
+
+.laptop__hinge {
+  height: 6px;
+  margin-inline: 8%;
+  border-radius: 0 0 3px 3px;
+  background: linear-gradient(180deg, hsl(230 20% 20%), hsl(230 20% 14%));
+}
+.laptop__base {
+  height: 0.6rem;
+  border-radius: 0 0 0.7rem 0.7rem;
+  background: linear-gradient(180deg, hsl(228 24% 24%), hsl(228 28% 16%));
+  box-shadow: 0 12px 18px -10px hsl(222 84% 5% / 0.4);
+  display: flex;
+  justify-content: center;
+}
+.laptop__trackpad {
+  width: 22%;
+  height: 3px;
+  margin-top: 1px;
+  border-radius: 0 0 3px 3px;
+  background: hsl(228 20% 30% / 0.6);
+}
+
+.laptop-scene__tagline {
+  margin: 0;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: hsl(var(--muted-foreground));
+  opacity: 0;
+  transform: translateY(4px);
+  transition: opacity 400ms ease, transform 400ms ease;
+}
+.laptop-scene__tagline[data-visible] {
+  opacity: 1;
+  transform: none;
+}
+
+@media (max-width: 480px) {
+  .laptop-scene {
+    max-width: 16rem;
+    gap: 0.6rem;
+  }
+  .laptop__code {
+    line-height: 1.5;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .laptop__screen,
+  .laptop__display,
+  .laptop__terminal,
+  .laptop__output,
+  .laptop-scene__tagline {
+    transition-duration: 0.01ms !important;
+  }
+  .laptop__caret {
+    animation: none;
+  }
+}

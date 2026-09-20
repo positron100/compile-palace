@@ -8,9 +8,9 @@ import ConnectionStatus from "../components/ConnectionStatus";
 import {
   Navigate,
   useLocation,
-  useNavigate,
   useParams,
 } from "react-router-dom";
+import { useStageTransitionNavigate } from "@/hooks/use-stage-transition-navigate";
 import ACTIONS from "../Actions";
 import { toast } from "sonner";
 import { submitCode, languageOptions } from "../services/compileService";
@@ -27,7 +27,7 @@ import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { getCleanLanguageName } from "../utils/languageUtils";
 import userService from "../services/userService";
 import { supabase } from "@/integrations/supabase/client";
-import { User, Session } from '@supabase/supabase-js';
+import { useAuth } from "@/context/AuthContext";
 import {
   saveRoomToDatabase,
   loadRoomFromDatabase,
@@ -42,7 +42,7 @@ function EditorPage() {
   const codeRef = useRef(null);
   const location = useLocation();
   const { roomId } = useParams();
-  const reactNavigator = useNavigate();
+  const reactNavigator = useStageTransitionNavigate();
   const [clients, setClients] = useState([]);
 
   const [language, setLanguage] = useState(languageOptions[0]);
@@ -57,35 +57,17 @@ function EditorPage() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState("Connecting...");
 
-  const [user, setUser] = useState<User | null>(null);
-  const [session, setSession] = useState<Session | null>(null);
+  const { user, loading: authLoading } = useAuth();
   const [profile, setProfile] = useState<any>(null);
-  const [authLoading, setAuthLoading] = useState(true);
+  const [initialCode, setInitialCode] = useState<string | null>(null);
+  const hasJoinedRef = useRef(false);
+  const signingOutRef = useRef(false);
 
   const username = profile?.name || location.state?.username || user?.email || "Anonymous";
   const [userCount, setUserCount] = useState(1);
   
   const lastClientsUpdateRef = useRef(Date.now());
   const clientsUpdateThrottleMs = 2000;
-
-  // Auth check
-  useEffect(() => {
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (event, session) => {
-        setSession(session);
-        setUser(session?.user ?? null);
-        setAuthLoading(false);
-      }
-    );
-
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-      setAuthLoading(false);
-    });
-
-    return () => subscription.unsubscribe();
-  }, []);
 
   // Fetch profile
   useEffect(() => {
@@ -101,9 +83,11 @@ function EditorPage() {
     }
   }, [user]);
 
-  // Add participant to room when joining
+  // Add participant to room when joining (once per mount, not once per
+  // profile/user object identity change from repeated auth state events)
   useEffect(() => {
-    if (user && roomId && profile) {
+    if (user && roomId && profile && !hasJoinedRef.current) {
+      hasJoinedRef.current = true;
       addParticipantToRoom(roomId, user.id, profile.name);
     }
   }, [user, roomId, profile]);
@@ -114,6 +98,7 @@ function EditorPage() {
       loadRoomFromDatabase(roomId).then((roomData) => {
         if (roomData && roomData.code && codeRef.current !== roomData.code) {
           codeRef.current = roomData.code;
+          setInitialCode(roomData.code);
           if (roomData.language) {
             const lang = languageOptions.find(l => l.name.toLowerCase() === roomData.language.toLowerCase());
             if (lang) setLanguage(lang);
@@ -298,7 +283,7 @@ function EditorPage() {
   useEffect(() => {
     if (initialized && !user && !authLoading) {
       toast.error("Please sign in to join a room");
-      reactNavigator("/auth");
+      reactNavigator("/auth", { shape: 'circle' });
     }
   }, [initialized, user, authLoading, reactNavigator]);
 
@@ -333,26 +318,58 @@ function EditorPage() {
     }
   };
 
-  const leaveRoom = async () => {
+  // Socket disconnect + code save/participant cleanup shared by "Leave Room"
+  // and "Sign Out" — they differ only in where they end up afterward.
+  const cleanupRoomConnection = async () => {
     if (socketRef.current) {
       socketRef.current.emit(ACTIONS.LEAVE, { roomId });
       socketRef.current.disconnect();
     }
-    
-    // Save code before leaving
+
     if (user && roomId && codeRef.current) {
       await saveRoomToDatabase(roomId, codeRef.current, language.name);
       await removeParticipantFromRoom(roomId, user.id);
     }
-    
-    reactNavigator("/");
+  };
+
+  const leaveRoom = async () => {
+    await cleanupRoomConnection();
+    // Editor -> Room: same square/band/full-viewport family, played in
+    // reverse — the editor's content shrinks away, uncovering the room.
+    reactNavigator("/", { shape: 'rect', direction: 'reverse' });
+  };
+
+  const handleSignOut = async (e: React.MouseEvent<HTMLButtonElement>) => {
+    // Same double-fire guard as Index.tsx's Room sign-out: a fast
+    // double-click's second signOut() call fails with "Auth session
+    // missing!" once the first has already cleared the session.
+    if (signingOutRef.current) return;
+    signingOutRef.current = true;
+
+    const r = e.currentTarget.getBoundingClientRect();
+    const origin = { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+    await cleanupRoomConnection();
+    const { error } = await supabase.auth.signOut();
+    // Reset unconditionally — see Index.tsx's Room sign-out for why a
+    // guard that only clears on the error path can get stuck permanently.
+    signingOutRef.current = false;
+    if (error) {
+      if (!/auth session missing/i.test(error.message)) {
+        toast.error(error.message);
+        return;
+      }
+    }
+    // AuthContext's SIGNED_OUT event is authoritative for auth state; this
+    // navigate only decides where the now-unauthenticated app lands — back
+    // to the starting screen, same as Index.tsx's Room sign-out.
+    reactNavigator("/", { shape: 'circle', direction: 'reverse', origin, replace: true });
   };
 
   const SidebarContent = React.memo(() => (
     <>
       <div className="mb-6">
-        <h2 className="text-2xl font-bold text-purple-800 mb-1">Code Palace</h2>
-        <p className="text-sm text-purple-500">Real-time code collaboration</p>
+        <h2 className="text-2xl font-bold text-indigo-800 mb-1">Code Palace</h2>
+        <p className="text-sm text-indigo-500">Real-time code collaboration</p>
         
         <ConnectionStatus 
           isConnected={socketConnected} 
@@ -373,7 +390,7 @@ function EditorPage() {
               />
             ))
           ) : (
-            <div className="text-sm text-purple-400 italic">
+            <div className="text-sm text-indigo-400 italic">
               {initialized ? "No users connected yet..." : "Connecting..."}
             </div>
           )}
@@ -381,21 +398,29 @@ function EditorPage() {
       </div>
       
       <div className="mt-auto space-y-3">
-        <Button 
+        <Button
           variant="outline"
-          className="w-full bg-white border-purple-200 text-purple-700 hover:bg-purple-50 hover:text-purple-800 flex items-center gap-2 transition-all"
+          className="w-full bg-white border-indigo-200 text-indigo-700 hover:bg-indigo-50 hover:text-indigo-800 flex items-center gap-2 transition-all"
           onClick={copyRoomId}
         >
           <Copy size={16} />
           Copy Room ID
         </Button>
-        <Button 
+        <Button
           variant="outline"
           className="w-full bg-white border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700 flex items-center gap-2 transition-all"
           onClick={leaveRoom}
         >
           <LogOut size={16} />
           Leave Room
+        </Button>
+        <Button
+          variant="ghost"
+          className="w-full text-gray-500 hover:text-gray-700 flex items-center gap-2"
+          onClick={handleSignOut}
+        >
+          <LogOut size={16} />
+          Sign Out
         </Button>
       </div>
     </>
@@ -408,7 +433,7 @@ function EditorPage() {
     return (
       <div className="min-h-screen flex items-center justify-center bg-white">
         <div className="text-center">
-          <div className="animate-spin h-10 w-10 border-4 border-purple-600 border-t-transparent rounded-full mx-auto mb-4"/>
+          <div className="animate-spin h-10 w-10 border-4 border-indigo-600 border-t-transparent rounded-full mx-auto mb-4"/>
           <p className="text-gray-600">Loading...</p>
         </div>
       </div>
@@ -425,19 +450,19 @@ function EditorPage() {
   }
 
   return (
-    <div className="min-h-screen bg-white text-gray-800 flex flex-col md:flex-row">
-      <div className="hidden md:flex w-64 bg-gradient-to-b from-white to-purple-50 p-6 flex-col border-r border-purple-100 shadow-sm">
+    <div className="min-h-screen cp-atmosphere text-gray-800 flex flex-col md:flex-row">
+      <div className="hidden md:flex w-64 glass-secondary p-6 flex-col">
         <SidebarContent />
       </div>
 
       <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
-        <SheetContent side="left" className="w-[85vw] sm:w-[350px] p-6 bg-gradient-to-b from-white to-purple-50">
+        <SheetContent side="left" className="w-[85vw] sm:w-[350px] p-6 glass-secondary">
           <SidebarContent />
         </SheetContent>
       </Sheet>
 
       <div className="flex-1 flex flex-col h-screen overflow-hidden">
-        <div className="p-4 border-b border-purple-100 bg-gradient-to-r from-purple-50 to-white flex justify-between items-center">
+        <div className="p-4 glass-subtle flex justify-between items-center">
           <div className="flex items-center gap-3">
             <Button 
               variant="ghost" 
@@ -459,10 +484,10 @@ function EditorPage() {
                 }
               }}
             >
-              <SelectTrigger className="w-40 md:w-60 bg-white border-purple-200 focus:ring-purple-400">
+              <SelectTrigger className="w-40 md:w-60 bg-white border-indigo-200 focus-visible:ring-indigo-400">
                 <SelectValue placeholder="Select language" />
               </SelectTrigger>
-              <SelectContent className="bg-white border-purple-100">
+              <SelectContent className="bg-white border-indigo-100">
                 {languageOptions.map((lang) => (
                   <SelectItem key={lang.id} value={lang.id.toString()}>
                     {getCleanLanguageName(lang.name)}
@@ -472,11 +497,11 @@ function EditorPage() {
             </Select>
           </div>
           
-          <div className="text-sm text-purple-600 font-medium">
+          <div className="text-sm text-indigo-600 font-medium">
             <span className="hidden sm:inline">Room: </span>
-            <span className="text-purple-800">{roomId}</span>
+            <span className="text-indigo-800">{roomId}</span>
             {userCount > 0 && (
-              <span className="ml-2 text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full">
+              <span className="ml-2 text-xs bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full">
                 {userCount} {userCount === 1 ? 'user' : 'users'}
               </span>
             )}
@@ -489,6 +514,7 @@ function EditorPage() {
             roomId={roomId || ""}
             language={language}
             username={username}
+            initialCode={initialCode}
             onCodeChange={(code) => {
               codeRef.current = code;
               debouncedSave(code);
@@ -498,7 +524,7 @@ function EditorPage() {
           <Button
             onClick={handleCompile}
             disabled={isCompiling}
-            className="absolute bottom-6 right-6 bg-purple-600 hover:bg-purple-700 text-white w-12 h-12 rounded-lg shadow-lg flex items-center justify-center transition-transform hover:scale-105 z-10"
+            className="absolute bottom-6 right-6 cp-lift bg-indigo-600 hover:bg-indigo-700 text-white w-12 h-12 rounded-lg shadow-lg flex items-center justify-center z-10"
           >
             {isCompiling ? (
               <div className="animate-spin h-5 w-5 border-2 border-white border-t-transparent rounded-full"/>
@@ -508,7 +534,7 @@ function EditorPage() {
           </Button>
         </div>
 
-        <div className="h-16 md:h-32 relative overflow-hidden bg-gradient-to-b from-purple-50 to-white">
+        <div className="h-16 md:h-32 relative overflow-hidden bg-gradient-to-b from-indigo-50 to-white">
           <ul className="squares">
             {Array.from({ length: 10 }).map((_, idx) => (
               <li

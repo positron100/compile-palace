@@ -66,14 +66,14 @@ const Client: React.FC<ClientProps> = ({ username, socketId }) => {
               </AvatarFallback>
             </Avatar>
           </TooltipTrigger>
-          <TooltipContent side={isMobile ? "bottom" : "right"} className="rounded-lg bg-white border border-purple-100 shadow-lg">
+          <TooltipContent side={isMobile ? "bottom" : "right"} className="rounded-lg bg-white border border-indigo-100 shadow-lg">
             <div className="px-1 py-0.5">
               <div className="font-semibold">{username || 'User'}</div>
               <div className="text-xs text-gray-500">Connected</div>
             </div>
           </TooltipContent>
         </Tooltip>
-        <span className={`text-xs text-purple-700 font-medium truncate ${isMobile ? 'max-w-[60px]' : 'max-w-[70px] md:max-w-[80px]'}`}>
+        <span className={`text-xs text-indigo-700 font-medium truncate ${isMobile ? 'max-w-[60px]' : 'max-w-[70px] md:max-w-[80px]'}`}>
           {username || 'User'}
         </span>
       </div>

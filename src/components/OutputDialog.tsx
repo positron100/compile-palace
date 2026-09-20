@@ -31,7 +31,7 @@ const OutputDialog: React.FC<OutputDialogProps> = ({
         className={`${isMobile ? 'w-[90vw] max-w-[95vw] p-0' : 'max-w-4xl p-0'} overflow-hidden border-none rounded-xl shadow-2xl`}
         hideCloseButton={true}
       >
-        <DialogHeader className="p-4 border-b bg-gradient-to-r from-purple-600 to-indigo-700 rounded-t-xl">
+        <DialogHeader className="p-4 border-b bg-gradient-to-r from-indigo-600 to-indigo-800 rounded-t-xl">
           <div className="flex justify-between items-center">
             <DialogTitle className="text-white flex items-center gap-2">
               <Terminal size={18} className="opacity-90 text-white" />

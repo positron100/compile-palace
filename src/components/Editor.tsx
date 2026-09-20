@@ -13,14 +13,16 @@ interface EditorProps {
     name: string;
   };
   username?: string;
+  initialCode?: string | null;
 }
 
-const Editor: React.FC<EditorProps> = memo(({ 
-  socketRef, 
-  roomId, 
-  onCodeChange, 
-  language, 
-  username = 'Anonymous' 
+const Editor: React.FC<EditorProps> = memo(({
+  socketRef,
+  roomId,
+  onCodeChange,
+  language,
+  username = 'Anonymous',
+  initialCode = null
 }) => {
   const codeRef = useRef<string>(getRoomCode(roomId) || "");
   
@@ -46,24 +48,25 @@ const Editor: React.FC<EditorProps> = memo(({
     onCodeChange: handleCodeChange
   });
   
-  // Apply initial code if available when the component mounts
+  // Apply initial code if available when the component mounts, or once it
+  // arrives from the database (initialCode resolves asynchronously after mount)
   useEffect(() => {
-    const initialCode = getRoomCode(roomId);
-    if (initialCode && editorRef.current && !codeRef.current) {
+    const codeToApply = initialCode || getRoomCode(roomId);
+    if (codeToApply && editorRef.current && !codeRef.current) {
       // Set flag to ignore the change event this will trigger
       ignoreChangeRef.current = true;
-      editorRef.current.setValue(initialCode);
-      codeRef.current = initialCode;
-      onCodeChange(initialCode);
+      editorRef.current.setValue(codeToApply);
+      codeRef.current = codeToApply;
+      onCodeChange(codeToApply);
       setTimeout(() => {
         ignoreChangeRef.current = false;
       }, 10);
-    } else if (socketRef.current) {
+    } else if (!codeToApply && socketRef.current) {
       // Explicitly request code sync if we don't have initial code
       // This helps ensure new users get the latest code
       requestCodeSync();
     }
-  }, [roomId, onCodeChange, editorRef, ignoreChangeRef, socketRef, requestCodeSync]);
+  }, [roomId, onCodeChange, editorRef, ignoreChangeRef, socketRef, requestCodeSync, initialCode]);
   
   return <textarea id="realtimeEditor"></textarea>;
 });

@@ -96,7 +96,7 @@
   }
 
   body {
-    @apply bg-background text-foreground;
+    @apply bg-background text-foreground font-sans;
   }
 }
 
@@ -129,4 +129,190 @@
   .animate-float {
     animation: float linear infinite;
   }
+}
+
+/* ---------------------------------------------------------------------------
+   Shared frosted-glass material system.
+
+   Three tiers, one shared set of tokens — never literal rgba/blur/shadow
+   values duplicated per component:
+     --glass-primary   major floating panels (room-join surface, future
+                        modals/dialogs)
+     --glass-secondary controls/utilities (toolbars, dropdowns, floating
+                        controls)
+     --glass-subtle    secondary floating information (badges, meta chips)
+
+   Not every surface is glass — structural/environment surfaces (the laptop,
+   page background) stay physical/solid so glass keeps meaning "floating UI",
+   not "everything is transparent". Theme-aware: dark mode gets its own
+   tinted-black tokens rather than just inverting the light ones.
+--------------------------------------------------------------------------- */
+:root {
+  /* The one accent color for the whole journey (Start/Auth/Room/Editor) —
+     was hardcoded as the literal hsl triple in 7 places across AuthCard.css,
+     AuthField.css and RoomJoinCard.css; every consumer now reads this token
+     instead so the editor's re-palette (purple -> indigo) is a one-line
+     change here, not a find-and-replace across files. */
+  --cp-accent: 243 75% 59%;
+  --cp-accent-soft: 243 75% 59% / 0.18;
+
+  /* Shared control geometry — every pill field/submit across Login, Signup
+     and Room Join reads these instead of repeating the numbers per file, so
+     the three forms cannot drift apart. */
+  --cp-field-h: 2.75rem;
+  --cp-field-radius: 9999px;
+  --cp-field-pad-x: 1.25rem;
+  --cp-field-max: 18rem;
+
+  --glass-blur: 18px;
+  --glass-primary-bg: hsl(0 0% 100% / 0.6);
+  --glass-primary-border: hsl(243 40% 70% / 0.35);
+  --glass-primary-sheen: linear-gradient(160deg, hsl(0 0% 100% / 0.55), transparent 45%);
+  --glass-primary-shadow: 0 30px 60px -30px hsl(243 60% 30% / 0.35);
+
+  --glass-secondary-bg: hsl(0 0% 100% / 0.5);
+  --glass-secondary-border: hsl(243 30% 70% / 0.3);
+  --glass-secondary-shadow: 0 14px 30px -18px hsl(243 60% 30% / 0.3);
+
+  --glass-subtle-bg: hsl(0 0% 100% / 0.35);
+  --glass-subtle-border: hsl(243 20% 70% / 0.22);
+}
+.dark {
+  --glass-primary-bg: hsl(230 35% 14% / 0.55);
+  --glass-primary-border: hsl(243 40% 60% / 0.25);
+  --glass-primary-sheen: linear-gradient(160deg, hsl(230 40% 40% / 0.3), transparent 45%);
+  --glass-primary-shadow: 0 30px 60px -30px hsl(230 84% 4% / 0.6);
+
+  --glass-secondary-bg: hsl(230 35% 14% / 0.45);
+  --glass-secondary-border: hsl(243 30% 60% / 0.2);
+  --glass-secondary-shadow: 0 14px 30px -18px hsl(230 84% 4% / 0.5);
+
+  --glass-subtle-bg: hsl(230 35% 14% / 0.3);
+  --glass-subtle-border: hsl(243 20% 60% / 0.16);
+}
+
+/* No `position` here on purpose: these plain (unlayered) rules sit after
+   @tailwind utilities in the compiled stylesheet, so at equal specificity
+   they'd beat a consumer's own Tailwind `fixed`/`absolute` utility — which
+   broke the mobile Sheet (needs `fixed` to slide in as an overlay; the glass
+   class's `position: relative` silently won and made it render in normal
+   flow, invisible). Positioning is each consumer's own concern; the two
+   glass surfaces that need to BE a positioning context for absolutely
+   positioned children set `position: relative` on themselves
+   (.auth-stage__viewport, .room-stage__form). */
+.glass-primary,
+.glass-secondary,
+.glass-subtle {
+  backdrop-filter: blur(var(--glass-blur)) saturate(1.4);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(1.4);
+  border: 1px solid transparent;
+  background-clip: padding-box;
+}
+.glass-primary {
+  background-color: var(--glass-primary-bg);
+  background-image: var(--glass-primary-sheen);
+  border-color: var(--glass-primary-border);
+  box-shadow: var(--glass-primary-shadow), inset 0 1px 0 hsl(0 0% 100% / 0.25);
+}
+.glass-secondary {
+  background-color: var(--glass-secondary-bg);
+  border-color: var(--glass-secondary-border);
+  box-shadow: var(--glass-secondary-shadow), inset 0 1px 0 hsl(0 0% 100% / 0.18);
+  backdrop-filter: blur(calc(var(--glass-blur) * 0.6)) saturate(1.3);
+  -webkit-backdrop-filter: blur(calc(var(--glass-blur) * 0.6)) saturate(1.3);
+}
+.glass-subtle {
+  background-color: var(--glass-subtle-bg);
+  border-color: var(--glass-subtle-border);
+  backdrop-filter: blur(calc(var(--glass-blur) * 0.35));
+  -webkit-backdrop-filter: blur(calc(var(--glass-blur) * 0.35));
+}
+
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  /* No backdrop-filter support: fall back to a more opaque solid tint so
+     text over the (unblurred) background underneath stays readable. */
+  .glass-primary {
+    background-color: hsl(var(--card) / 0.96);
+  }
+  .glass-secondary {
+    background-color: hsl(var(--card) / 0.92);
+  }
+  .glass-subtle {
+    background-color: hsl(var(--card) / 0.85);
+  }
+}
+
+/* Shared pill geometry + physical hover/press response, used across the
+   auth forms and the start/join screens so buttons and fields read as one
+   consistent control language. */
+.cp-pill {
+  border-radius: 9999px !important;
+}
+.cp-lift {
+  transition: translate 140ms ease, box-shadow 140ms ease;
+}
+.cp-lift:hover:not(:disabled) {
+  translate: 0 -2px;
+  box-shadow: 0 12px 24px -14px hsl(243 75% 40% / 0.55);
+}
+.cp-lift:active:not(:disabled) {
+  translate: 0;
+  filter: brightness(0.96);
+  box-shadow: 0 2px 6px -2px hsl(243 75% 40% / 0.45);
+}
+@media (prefers-reduced-motion: reduce) {
+  .cp-lift {
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* Shared background atmosphere for Start/Auth/Room — the same warm-white +
+   low-opacity indigo/violet wash already proven on Room Join
+   (RoomJoinCard.css's .room-stage__viewport), promoted here so every screen
+   gives the glass surfaces something to diffuse instead of each page
+   rolling its own gray-50->gray-100 gradient. Static gradients only — no
+   keyframes, no added repaint cost. */
+.cp-atmosphere {
+  background:
+    radial-gradient(55% 65% at 20% 22%, hsl(243 75% 88% / 0.5), transparent 62%),
+    radial-gradient(50% 60% at 85% 78%, hsl(260 70% 90% / 0.42), transparent 65%),
+    linear-gradient(135deg, hsl(220 35% 98%), hsl(240 28% 96%) 55%, hsl(243 32% 95%) 100%);
+}
+
+/* ---------------------------------------------------------------------------
+   Stage transitions (Start -> Auth -> Room -> Editor), lib/stageTransition.ts.
+
+   The route change runs inside document.startViewTransition; this file only
+   owns what every shape (circle, rect, curtain) needs: the default
+   cross-fade killed (the clip-path/mask animation set up in JS is the only
+   motion), the root's own group animation killed (it would otherwise
+   independently resize/shift the clipped layer), and z-index ordering so
+   "forward" reveals the new route on top while "reverse" un-covers the old
+   one shrinking away on top — the suffix selectors below match any shape
+   name ending in "-forward"/"-reverse", so a new shape needs no CSS change
+   here. Unsupported browsers never see `data-stage-transition` at all — the
+   JS side already fell back to a direct navigate.
+--------------------------------------------------------------------------- */
+:root[data-stage-transition] * {
+  transition: none !important;
+}
+::view-transition-group(root) {
+  animation: none;
+}
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation: none;
+  mix-blend-mode: normal;
+}
+:root[data-stage-transition$="-forward"]::view-transition-old(root) {
+  z-index: 1;
+}
+:root[data-stage-transition$="-forward"]::view-transition-new(root) {
+  z-index: 2;
+}
+:root[data-stage-transition$="-reverse"]::view-transition-old(root) {
+  z-index: 2;
+}
+:root[data-stage-transition$="-reverse"]::view-transition-new(root) {
+  z-index: 1;
 }

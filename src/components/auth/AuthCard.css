@@ -1,0 +1,253 @@
+/* The authentication stage — a fixed-size clipping viewport. The outer box
+   MUST NOT resize between login and register; only the inner layers move, and
+   only on transforms. `data-mode` drives the whole choreography; reduced
+   motion collapses it to an instant swap. */
+
+.auth-stage {
+  --auth-h: 34rem;
+  --bulge: clamp(2rem, 7vw, 5rem);
+  --dur-curtain: 640ms;
+  --ease-curtain: cubic-bezier(0.65, 0, 0.35, 1);
+  --accent: var(--cp-accent);
+  --accent-fg: 0 0% 100%;
+
+  --curtain-login: translateX(-50%);
+  --curtain-register: translateX(50%);
+  --copy-exit: translateX(-150%);
+  --copy-enter-from: translateX(150%);
+  --form-old-exit: translateX(10%);
+  --form-new-from: translateX(-10%);
+  --bulge-login: 0 var(--bulge) var(--bulge) 0;
+  --bulge-register: var(--bulge) 0 0 var(--bulge);
+
+  width: 100%;
+  max-width: 56rem;
+  margin-inline: auto;
+}
+
+/* Material (background/blur/border/shadow) comes from .glass-primary
+   (index.css) — this rule lays out the fixed clipping viewport the curtain
+   sweeps inside, and is the positioning context for its absolutely
+   positioned form/curtain/welcome layers (glass-primary itself sets no
+   `position`, so this can't be dropped). */
+.auth-stage__viewport {
+  position: relative;
+  height: var(--auth-h);
+  border-radius: calc(var(--radius) * 3);
+  overflow: hidden;
+  isolation: isolate;
+}
+
+/* --- Form layers (z1) --- */
+.auth-stage__form {
+  position: absolute;
+  top: 0;
+  height: 100%;
+  width: 50%;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  padding: 2rem clamp(1.5rem, 4vw, 3rem);
+  overflow-y: auto;
+  transition: transform var(--dur-curtain) var(--ease-curtain), opacity var(--dur-curtain) var(--ease-curtain);
+}
+.auth-stage__form--register {
+  left: 0;
+  transform: var(--form-new-from);
+  opacity: 0;
+}
+.auth-stage__form--login {
+  right: 0;
+  transform: none;
+  opacity: 1;
+}
+.auth-stage[data-mode="register"] .auth-stage__form--register {
+  transform: none;
+  opacity: 1;
+}
+.auth-stage[data-mode="register"] .auth-stage__form--login {
+  transform: var(--form-old-exit);
+  opacity: 0;
+}
+
+/* --- The curtain (z3) --- */
+.auth-stage__curtain {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  z-index: 3;
+  background-color: hsl(var(--accent));
+  background-image:
+    radial-gradient(120% 90% at 20% 15%, hsl(0 0% 100% / 0.22), transparent 60%),
+    linear-gradient(158deg, hsl(0 0% 100% / 0.28), transparent 42%, hsl(243 60% 30% / 0.3));
+  border-radius: var(--bulge-login);
+  transform: var(--curtain-login);
+  transition: transform var(--dur-curtain) var(--ease-curtain), border-radius var(--dur-curtain) var(--ease-curtain);
+  will-change: transform;
+}
+.auth-stage[data-mode="register"] .auth-stage__curtain {
+  transform: var(--curtain-register);
+  border-radius: var(--bulge-register);
+}
+
+/* --- Welcome copy layer (z4) --- */
+.auth-stage__welcome {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  overflow: hidden;
+  pointer-events: none;
+}
+.auth-stage__copy {
+  position: absolute;
+  top: 0;
+  height: 100%;
+  width: 50%;
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  padding: 3rem 2rem;
+  text-align: center;
+  color: hsl(var(--accent-fg));
+  pointer-events: auto;
+  transition: transform var(--dur-curtain) var(--ease-curtain), opacity var(--dur-curtain) var(--ease-curtain);
+}
+.auth-stage__copy--login {
+  left: 0;
+  transform: none;
+  opacity: 1;
+}
+.auth-stage__copy--register {
+  left: 50%;
+  transform: var(--copy-enter-from);
+  opacity: 0;
+}
+.auth-stage[data-mode="register"] .auth-stage__copy--login {
+  transform: var(--copy-exit);
+  opacity: 0;
+}
+.auth-stage[data-mode="register"] .auth-stage__copy--register {
+  transform: none;
+  opacity: 1;
+}
+
+.auth-stage__wordmark {
+  font-weight: 600;
+  font-size: 1.05rem;
+  letter-spacing: 0.03em;
+  opacity: 0.9;
+}
+.auth-stage__heading {
+  margin: 1.25rem 0 0;
+  font-weight: 600;
+  font-size: clamp(1.7rem, 1.2rem + 2vw, 2.3rem);
+  line-height: 1.15;
+  letter-spacing: -0.01em;
+}
+.auth-stage__sub {
+  margin: 0.75rem auto 0;
+  max-width: 20rem;
+  font-size: 0.9375rem;
+  line-height: 1.5;
+  color: hsl(var(--accent-fg) / 0.9);
+}
+
+.auth-stage__cta {
+  margin-top: 1.5rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 2.75rem;
+  padding-inline: 1.5rem;
+  border: 1px solid hsl(var(--accent-fg) / 0.55);
+  border-radius: 9999px;
+  background-color: hsl(var(--accent-fg) / 0.08);
+  box-shadow: inset 0 1px 0 hsl(var(--accent-fg) / 0.24);
+  color: hsl(var(--accent-fg));
+  font-weight: 500;
+  font-size: 0.9375rem;
+  cursor: pointer;
+  transition: background-color 140ms ease, border-color 140ms ease, box-shadow 140ms ease, translate 140ms ease;
+}
+.auth-stage__cta:hover {
+  background-color: hsl(var(--accent-fg) / 0.16);
+  border-color: hsl(var(--accent-fg) / 0.9);
+  translate: 0 -2px;
+  box-shadow: 0 10px 24px -12px hsl(222 84% 5% / 0.45), inset 0 1px 0 hsl(var(--accent-fg) / 0.48);
+}
+.auth-stage__cta:active {
+  translate: 0;
+  box-shadow: inset 0 1px 3px hsl(222 84% 5% / 0.3);
+}
+.auth-stage__cta:focus-visible {
+  outline: 2px solid hsl(var(--accent-fg));
+  outline-offset: 3px;
+}
+
+/* --- Mobile: curtain sweeps vertically; card height fixed for register so the
+   extra field never grows the box. --- */
+@media (max-width: 767px) {
+  .auth-stage {
+    --auth-h: 44rem;
+    --bulge: clamp(1.5rem, 10vw, 3rem);
+    --curtain-login: translateY(-72%);
+    --curtain-register: translateY(72%);
+    --copy-exit: translateY(-150%);
+    --copy-enter-from: translateY(150%);
+    --form-old-exit: translateY(10%);
+    --form-new-from: translateY(-10%);
+    --bulge-login: 0 0 var(--bulge) var(--bulge);
+    --bulge-register: var(--bulge) var(--bulge) 0 0;
+    max-width: 25rem;
+  }
+
+  .auth-stage__form {
+    width: 100%;
+    height: 100%;
+    left: 0;
+    right: auto;
+    place-items: start stretch;
+    align-content: start;
+    padding: 1.5rem;
+  }
+  .auth-stage__form--login {
+    padding-top: calc(0.32 * var(--auth-h));
+  }
+  .auth-stage__form--register {
+    padding-bottom: calc(0.32 * var(--auth-h));
+  }
+
+  .auth-stage__copy {
+    width: 100%;
+    height: 30%;
+    left: 0;
+    padding: 1rem 1.25rem;
+  }
+  .auth-stage__copy--login {
+    top: 0;
+  }
+  .auth-stage__copy--register {
+    top: auto;
+    bottom: 0;
+    left: 0;
+  }
+  .auth-stage__heading {
+    margin-top: 0.5rem;
+    font-size: 1.4rem;
+  }
+  .auth-stage__sub {
+    display: none;
+  }
+  .auth-stage__cta {
+    margin-top: 1rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .auth-stage__form,
+  .auth-stage__curtain,
+  .auth-stage__copy,
+  .auth-stage__cta {
+    transition-duration: 0.01ms !important;
+  }
+}
