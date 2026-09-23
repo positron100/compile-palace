@@ -6,9 +6,24 @@ interface AuthContextValue {
   user: User | null;
   session: Session | null;
   loading: boolean;
+  /** True for the span of an intentional, user-initiated sign-out (set by
+   *  the caller right before invoking supabase.auth.signOut(), cleared once
+   *  it settles). `session` flips to null on Supabase's own async schedule,
+   *  which a route guard like RequireAuth would otherwise treat identically
+   *  to "never was logged in" and redirect to /auth — this flag lets a
+   *  guard tell the two apart and defer to the sign-out's own intended
+   *  destination instead of flashing the login screen first. */
+  signingOut: boolean;
+  setSigningOut: (value: boolean) => void;
 }
 
-const AuthContext = createContext<AuthContextValue>({ user: null, session: null, loading: true });
+const AuthContext = createContext<AuthContextValue>({
+  user: null,
+  session: null,
+  loading: true,
+  signingOut: false,
+  setSigningOut: () => {},
+});
 
 /**
  * Single source of truth for auth state, subscribed once at the app root.
@@ -24,6 +39,7 @@ const AuthContext = createContext<AuthContextValue>({ user: null, session: null,
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
+  const [signingOut, setSigningOut] = useState(false);
 
   useEffect(() => {
     const {
@@ -36,7 +52,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   return (
-    <AuthContext.Provider value={{ user: session?.user ?? null, session, loading }}>{children}</AuthContext.Provider>
+    <AuthContext.Provider value={{ user: session?.user ?? null, session, loading, signingOut, setSigningOut }}>
+      {children}
+    </AuthContext.Provider>
   );
 }
 

@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { AlertCircle, CheckCircle, Terminal, Info } from 'lucide-react';
+import { AlertCircle, AlertTriangle, Terminal, ChevronRight } from 'lucide-react';
 
 interface OutputStatus {
   id?: number;
@@ -18,84 +18,119 @@ interface OutputDetails {
 
 interface OutputSectionProps {
   outputDetails: OutputDetails | null;
+  stdin?: string;
 }
 
-const OutputSection: React.FC<OutputSectionProps> = ({ outputDetails }) => {
+// Pulls a file/line(/col) location out of real diagnostic text — gcc/clang/js
+// style ("main.cpp:4:12: error: ...") or Python's ("File "script.py", line 4").
+// Returns null (no chip rendered) rather than guessing when neither pattern
+// matches — never fabricates a location the diagnostic didn't actually contain.
+function extractLocation(text?: string): { file: string; line: string; col?: string } | null {
+  if (!text) return null;
+  const gcc = text.match(/([^\s:"']+):(\d+):(\d+)/);
+  if (gcc) return { file: gcc[1], line: gcc[2], col: gcc[3] };
+  const py = text.match(/File "([^"]+)", line (\d+)/);
+  if (py) return { file: py[1], line: py[2] };
+  return null;
+}
+
+function LocationChip({ loc }: { loc: { file: string; line: string; col?: string } }) {
   return (
-    <div className="output-section py-5">
-      {outputDetails ? (
-        <div className="space-y-5">
-          <div className="output-header mb-4">
-            <div className="status-badge inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium mb-1"
-              style={{
-                backgroundColor: outputDetails.status?.id === 3 ? 'rgba(52, 211, 153, 0.1)' : 'rgba(251, 191, 36, 0.1)',
-                color: outputDetails.status?.id === 3 ? 'rgb(4, 120, 87)' : 'rgb(146, 64, 14)',
-                border: `1px solid ${outputDetails.status?.id === 3 ? 'rgba(52, 211, 153, 0.2)' : 'rgba(251, 191, 36, 0.2)'}`
-              }}>
-              {outputDetails.status?.id === 3 ? (
-                <CheckCircle size={14} className="stroke-[2.5px]" />
-              ) : (
-                <Info size={14} className="stroke-[2.5px]" />
-              )}
-              {outputDetails.status?.description || "Unknown"}
-            </div>
-          </div>
-          
-          {outputDetails.stdout && (
-            <div className="output-item">
-              <div className="flex items-center gap-1.5 mb-2 text-sm font-medium text-slate-700">
-                <Terminal size={15} className="opacity-80" />
-                Standard Output
-              </div>
-              <pre className="p-3 bg-slate-50 rounded-lg border border-slate-200 text-sm text-slate-800 overflow-auto max-h-44 font-mono whitespace-pre-wrap">
-                {outputDetails.stdout}
-              </pre>
-            </div>
-          )}
-          
-          {!outputDetails.stdout && (
-            <div className="output-item">
-              <div className="flex items-center gap-1.5 mb-2 text-sm font-medium text-slate-700">
-                <Terminal size={15} className="opacity-80" />
-                Standard Output
-              </div>
-              <div className="p-5 bg-slate-50 rounded-lg border border-slate-200 text-slate-400 text-sm flex items-center justify-center italic">
-                No output generated
-              </div>
-            </div>
-          )}
-          
-          {outputDetails.stderr && (
-            <div className="output-item">
-              <div className="flex items-center gap-1.5 mb-2 text-sm font-medium text-red-600">
-                <AlertCircle size={15} className="opacity-80" />
-                Standard Error
-              </div>
-              <pre className="p-3 bg-red-50 rounded-lg border border-red-100 text-sm text-red-800 overflow-auto max-h-44 font-mono whitespace-pre-wrap">
-                {outputDetails.stderr}
-              </pre>
-            </div>
-          )}
-          
-          {outputDetails.compile_output && (
-            <div className="output-item">
-              <div className="flex items-center gap-1.5 mb-2 text-sm font-medium text-amber-700">
-                <Info size={15} className="opacity-80" />
-                Compilation Output
-              </div>
-              <pre className="p-3 bg-amber-50 rounded-lg border border-amber-100 text-sm text-amber-800 overflow-auto max-h-44 font-mono whitespace-pre-wrap">
-                {outputDetails.compile_output}
-              </pre>
-            </div>
-          )}
-        </div>
-      ) : (
+    <div className="inline-flex items-center gap-1 mb-2 px-2 py-0.5 rounded-md bg-white/60 border border-slate-200 text-xs font-mono text-slate-600">
+      <span className="truncate max-w-[10rem]">{loc.file}</span>
+      <span className="opacity-50">:</span>
+      <span>{loc.line}</span>
+      {loc.col && (
+        <>
+          <span className="opacity-50">:</span>
+          <span>{loc.col}</span>
+        </>
+      )}
+    </div>
+  );
+}
+
+const OutputSection: React.FC<OutputSectionProps> = ({ outputDetails, stdin }) => {
+  if (!outputDetails) {
+    return (
+      <div className="output-section py-5">
         <div className="min-h-[200px] flex flex-col items-center justify-center text-slate-400 p-5">
           <Terminal size={40} className="opacity-30 mb-3" />
           <p className="text-center">
             Run your code to see output results here
           </p>
         </div>
+      </div>
+    );
+  }
+
+  const compileLoc = extractLocation(outputDetails.compile_output);
+  const stderrLoc = extractLocation(outputDetails.stderr);
+
+  return (
+    <div className="output-section py-4 space-y-5">
+      {/* Program Output — always shown, exactly as received, never altered. */}
+      <div className="output-item">
+        <div className="flex items-center gap-1.5 mb-2 text-sm font-medium text-slate-700">
+          <Terminal size={15} className="opacity-80" />
+          Program Output
+        </div>
+        {outputDetails.stdout ? (
+          <pre className="p-3 bg-slate-50 rounded-lg border border-slate-200 text-sm text-slate-800 font-mono whitespace-pre-wrap">
+            {outputDetails.stdout}
+          </pre>
+        ) : (
+          <div className="p-5 bg-slate-50 rounded-lg border border-slate-200 text-slate-400 text-sm flex items-center justify-center italic">
+            No output generated
+          </div>
+        )}
+      </div>
+
+      {/* Compiler diagnostics — Judge0's compile_output field, kept visually
+          distinct (amber) from plain stdout/stderr since it's a different
+          kind of information (build-time, not run-time). */}
+      {outputDetails.compile_output && (
+        <div className="output-item">
+          <div className="flex items-center gap-1.5 mb-2 text-sm font-medium text-amber-700">
+            <AlertTriangle size={15} className="opacity-80" />
+            Compilation Error
+          </div>
+          {compileLoc && <LocationChip loc={compileLoc} />}
+          <pre className="p-3 bg-amber-50 rounded-lg border border-amber-100 text-sm text-amber-800 font-mono whitespace-pre-wrap">
+            {outputDetails.compile_output}
+          </pre>
+        </div>
+      )}
+
+      {/* stderr — only rendered when Judge0's response actually has content
+          here, never manufactured. */}
+      {outputDetails.stderr && (
+        <div className="output-item">
+          <div className="flex items-center gap-1.5 mb-2 text-sm font-medium text-red-600">
+            <AlertCircle size={15} className="opacity-80" />
+            stderr
+          </div>
+          {stderrLoc && <LocationChip loc={stderrLoc} />}
+          <pre className="p-3 bg-red-50 rounded-lg border border-red-100 text-sm text-red-800 font-mono whitespace-pre-wrap">
+            {outputDetails.stderr}
+          </pre>
+        </div>
+      )}
+
+      {/* Input — collapsible, native <details> (no new state/animation
+          needed). Only renders when stdin actually has content; the app has
+          no stdin-entry UI yet, so this stays dormant until one exists,
+          rather than showing an empty/fake input box. */}
+      {stdin && stdin.trim() && (
+        <details className="output-item group">
+          <summary className="flex items-center gap-1.5 mb-2 text-sm font-medium text-slate-700 cursor-pointer select-none list-none">
+            <ChevronRight size={15} className="opacity-70 transition-transform group-open:rotate-90" />
+            Input
+          </summary>
+          <pre className="p-3 bg-slate-50 rounded-lg border border-slate-200 text-sm text-slate-800 font-mono whitespace-pre-wrap">
+            {stdin}
+          </pre>
+        </details>
       )}
     </div>
   );

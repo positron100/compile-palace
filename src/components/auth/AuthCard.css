@@ -18,8 +18,6 @@
 
   --curtain-login: translateX(-50%);
   --curtain-register: translateX(50%);
-  --curtain-room-from-login: translateX(150%);
-  --curtain-room-from-register: translateX(-150%);
   --copy-exit: translateX(-150%);
   --copy-enter-from: translateX(150%);
   --form-old-exit: translateX(10%);
@@ -91,49 +89,91 @@
   opacity: 0;
 }
 /* Room mode: both auth forms exit, whichever was active riding the same
-   --form-old-exit it already uses. */
+   --form-old-exit it already uses.
+   Deliberately a SHORT, front-loaded duration (~34% of --dur-room, 0 delay)
+   instead of the full --dur-room: the room panel/laptop are still assembling
+   for the whole 760ms, but the OLD auth content must be gone long before
+   that — otherwise its opacity is still >0 while the new room content is
+   simultaneously fading in underneath/behind it, and for a good chunk of
+   the transition BOTH are ~50% visible at once. That's a literal double-
+   exposure ghost blend, not a rendering bug, and it's what read as "ghosted
+   Login content remaining." Hiding old content fast removes the overlap
+   window instead of trying to time around it. */
 .auth-stage[data-mode="room"] .auth-stage__form--login,
 .auth-stage[data-mode="room"] .auth-stage__form--register {
   transform: var(--form-old-exit);
   opacity: 0;
   pointer-events: none;
-  transition-duration: var(--dur-room);
+  transition-duration: calc(var(--dur-room) * 0.34);
+  transition-delay: 0ms;
 }
 
 /* --- The curtain (z3) --- */
+/* The purple gradient sheen lives on ::before, not here, so ROOM mode can
+   crossfade it away via plain opacity while this element's own
+   background-color transitions smoothly to glass underneath it — a
+   multi-layer background-image can't interpolate toward `none` cleanly,
+   but an opacity fade on a separate layer always can. `overflow: hidden`
+   clips that pseudo (and anything else) to whatever border-radius this
+   element currently has at each frame, so it never needs its own radius
+   kept in sync by hand. */
 .auth-stage__curtain {
   position: absolute;
   inset: 0;
   width: 100%;
   z-index: 3;
+  overflow: hidden;
   background-color: hsl(var(--accent));
+  border-radius: var(--bulge-login);
+  transform: var(--curtain-login);
+  transition: transform var(--dur-curtain) var(--ease-curtain), border-radius var(--dur-curtain) var(--ease-curtain),
+    background-color 260ms ease;
+  will-change: transform;
+}
+.auth-stage__curtain::before {
+  content: "";
+  position: absolute;
+  inset: 0;
   background-image:
     radial-gradient(120% 90% at 20% 15%, hsl(0 0% 100% / 0.22), transparent 60%),
     linear-gradient(158deg, hsl(0 0% 100% / 0.28), transparent 42%, hsl(243 60% 30% / 0.3));
-  border-radius: var(--bulge-login);
-  transform: var(--curtain-login);
-  transition: transform var(--dur-curtain) var(--ease-curtain), border-radius var(--dur-curtain) var(--ease-curtain);
-  will-change: transform;
 }
 .auth-stage[data-mode="register"] .auth-stage__curtain {
   transform: var(--curtain-register);
   border-radius: var(--bulge-register);
 }
-/* Room: the curtain's target always sits on the OPPOSITE side from whatever
-   mode it's sweeping FROM (data-room-entry, set by Auth.tsx) — that's what
-   guarantees it always crosses full coverage on the way, regardless of
-   whether the user just completed login or register. Flat corners (no
-   bulge): there's no adjacent welcome-copy half for a bulge to face once
-   Room Join takes the full width. */
-.auth-stage[data-mode="room"][data-room-entry="login"] .auth-stage__curtain {
-  transform: var(--curtain-room-from-login);
-  border-radius: 0;
-  transition-duration: var(--dur-room);
+/* Room: reuses the REGISTER rest position and bulge verbatim — not a new
+   transform, not a new shape. Room Join's glass form panel always sits on
+   the right, so the curtain's destination is fixed regardless of which auth
+   mode it's coming from: from login (resting at -50%, left) it sweeps the
+   full width to +50%, exactly like a login->register switch; from register
+   it's ALREADY at +50%, so there's no lateral travel at all — only the
+   material morph below plays. That asymmetry is real and expected, not a
+   bug: register already rests exactly where Room Join needs it.
+   `data-room-entry` is unused here now (both cases converge on the same
+   target) — Auth.tsx still sets it, harmlessly, in case anything else ever
+   needs to know which side the sweep started from.
+   Crucially: opacity stays 1. The curtain does not fade out or leave the
+   viewport — it stays exactly where a login/register curtain always would,
+   and only its MATERIAL changes (background-color -> the same glass token
+   .room-stage__form itself renders with, backdrop-filter -> the same blur
+   .glass-primary uses, ::before's purple sheen -> opacity 0). It ends up
+   *being* the glass surface the room content sits on, not something that
+   vanishes to reveal a separate one underneath. */
+.auth-stage[data-mode="room"] .auth-stage__curtain {
+  transform: var(--curtain-register);
+  border-radius: var(--bulge-register);
+  background-color: var(--glass-primary-bg);
+  backdrop-filter: blur(var(--glass-blur)) saturate(1.4);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(1.4);
+  transition: transform var(--dur-room) var(--ease-curtain),
+    border-radius var(--dur-room) var(--ease-curtain),
+    background-color var(--dur-room) var(--ease-curtain),
+    backdrop-filter var(--dur-room) var(--ease-curtain);
 }
-.auth-stage[data-mode="room"][data-room-entry="register"] .auth-stage__curtain {
-  transform: var(--curtain-room-from-register);
-  border-radius: 0;
-  transition-duration: var(--dur-room);
+.auth-stage[data-mode="room"] .auth-stage__curtain::before {
+  opacity: 0;
+  transition: opacity var(--dur-room) var(--ease-curtain);
 }
 
 /* --- Welcome copy layer (z4) --- */
@@ -176,11 +216,15 @@
   transform: none;
   opacity: 1;
 }
+/* Same fast, front-loaded hide as the forms above, same reason: this text
+   ("New to the palace?" / CTAs) is the other half of "old auth content"
+   that must be gone early, not fading in parallel with the room panel. */
 .auth-stage[data-mode="room"] .auth-stage__copy--login,
 .auth-stage[data-mode="room"] .auth-stage__copy--register {
   opacity: 0;
   pointer-events: none;
-  transition-duration: var(--dur-room);
+  transition-duration: calc(var(--dur-room) * 0.34);
+  transition-delay: 0ms;
 }
 
 /* --- Room layer (z1, same plane as the forms) --- */
@@ -194,11 +238,32 @@
   pointer-events: none;
   overflow: hidden;
 }
+/* Starts on the SAME small 8% lead-in as the curtain's own opacity fade
+   above (not the ~28% delay this used to carry) and runs almost the whole
+   --dur-room, so the room panel is visibly assembling itself in parallel
+   with the curtain sweep and the laptop's entry (RoomLaptopContext), all
+   three settling within the same window instead of the panel popping in
+   only after the curtain has already finished.
+   z-index jumps above the curtain (z3) for this mode only: the curtain no
+   longer disappears in room mode (see above) — it stays as the glass
+   material sitting at z3, and the actual interactive Room Join content
+   needs to render ON TOP of that material rather than being hidden behind
+   it. On the left (laptop) half nothing changes, since the curtain never
+   covers that side to begin with. */
 .auth-stage[data-mode="room"] .auth-stage__room {
+  z-index: 4;
   opacity: 1;
   transform: none;
   pointer-events: auto;
-  transition-duration: var(--dur-room);
+  /* Delay must be >= the old form/copy's own fade-out duration above
+     (0.34 * --dur-room) or the two crossfade mid-flight: for however long
+     the delay is shorter than that, old content is still fading down while
+     room content is already fading up, both simultaneously non-zero and
+     alpha-blending into visible double-text — this is what actually reads
+     as ghosting to a human eye, even when neither individual opacity value
+     is very high. Room only starts once the old layer has fully hit zero. */
+  transition-duration: calc(var(--dur-room) * 0.66);
+  transition-delay: calc(var(--dur-room) * 0.34);
 }
 
 .auth-stage__wordmark {
@@ -262,8 +327,6 @@
     --bulge: clamp(1.5rem, 10vw, 3rem);
     --curtain-login: translateY(-72%);
     --curtain-register: translateY(72%);
-    --curtain-room-from-login: translateY(150%);
-    --curtain-room-from-register: translateY(-150%);
     --copy-exit: translateY(-150%);
     --copy-enter-from: translateY(150%);
     --form-old-exit: translateY(10%);
@@ -320,9 +383,11 @@
   .auth-stage,
   .auth-stage__form,
   .auth-stage__curtain,
+  .auth-stage__curtain::before,
   .auth-stage__copy,
   .auth-stage__cta,
   .auth-stage__room {
     transition-duration: 0.01ms !important;
+    transition-delay: 0ms !important;
   }
 }

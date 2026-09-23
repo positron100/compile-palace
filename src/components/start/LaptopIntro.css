@@ -38,6 +38,24 @@
   transform-style: preserve-3d;
 }
 
+/* Dark theme only: the laptop's own body/screen colors are fixed, deliberately
+   dark hsl(230 20-45% 8-30%) navy/charcoal regardless of theme (frozen
+   design, not touched) — fine against every light-theme page background,
+   but against Dark's new deep-navy atmosphere it loses all edge separation.
+   A soft accent-tinted drop-shadow restores contrast without touching the
+   laptop's own fill colors, geometry, or open/close choreography.
+   Deliberately on `.laptop-scene` (a plain wrapper), NOT `.laptop` itself —
+   `.laptop` owns `perspective` + `transform-style: preserve-3d` for the lid
+   fold, and Chromium breaks/flattens 3D-transformed descendants when a
+   `filter` lands on their own preserve-3d ancestor (confirmed live: the
+   open-state screen content vanished, only the closed-state base bar
+   painted, with the filter on `.laptop`). One level up avoids the same
+   stacking context entirely. */
+.dark .laptop-scene {
+  filter: drop-shadow(0 0 2.5rem hsl(var(--cp-accent) / 0.28))
+    drop-shadow(0 20px 45px hsl(230 84% 3% / 0.6));
+}
+
 .laptop__screen {
   position: relative;
   transform-origin: bottom center;

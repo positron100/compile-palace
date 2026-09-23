@@ -32,17 +32,25 @@ import { useReducedMotion } from "@/hooks/use-reduced-motion";
  * overlay now, not a portal.
  *
  * ENTRY CHOREOGRAPHY: the first time any slot registers (the moment Auth's
- * curtain-sweep preview mounts), this doesn't mount LaptopIntro yet. It
- * first renders a *static* closed-laptop shape (LaptopIntro.css's own
- * classes, no `.laptop--open`, no JS — literally cannot animate on its own)
- * that travels from off-canvas into the tracked slot position over
- * ENTRY_MS. Only once that travel finishes does `<LaptopIntro loop>` mount
- * for the first time — closed by construction (its own initial stage), at
- * the exact position the static shape just settled into, so there's no
- * jump. LaptopIntro's own built-in 200ms closed-before-typing delay is what
- * supplies the "brief settle" beat the design calls for; nothing here needs
- * to duplicate it. This is still ONE LaptopIntro instance for the entire
- * Room lifetime — it simply doesn't exist yet during the travel beat.
+ * curtain-sweep preview mounts), a *static* closed-laptop shape
+ * (LaptopIntro.css's own classes, no `.laptop--open`, no JS — literally
+ * cannot animate on its own) starts travelling from off-canvas into the
+ * tracked slot position, on the same lead-in and duration as the curtain
+ * and room panel, so all three move as one.
+ *
+ * The travelling wrapper is a separate, persistent element from whatever is
+ * rendered inside it, which is the whole trick: `<LaptopIntro loop>` mounts
+ * MID-travel (MOUNT_AT_MS) and simply continues gliding on the wrapper's
+ * still-running transition — closed by construction (its own initial
+ * stage), identical markup to the static shape, so the swap is invisible
+ * and there's no jump. Mounting it early is deliberate: LaptopIntro's own
+ * built-in 200ms closed-before-typing hold then expires LID_LEAD_MS after
+ * the scene settles, which is the "short settle, then it opens" beat. The
+ * previous version waited for travel to fully finish before mounting, so
+ * that 200ms hold started only afterwards and the lid-open landed a whole
+ * beat late — reading as "the room panel arrived, and then separately a
+ * laptop showed up". Still ONE LaptopIntro instance for the entire Room
+ * lifetime; it simply doesn't exist yet during the first part of the travel.
  */
 interface Rect {
   top: number;
@@ -66,8 +74,28 @@ function sameRect(a: Rect | null, b: Rect): boolean {
 // shape starts before travelling in — scales down naturally on mobile's
 // smaller laptop rather than needing a separate breakpoint value.
 const ENTRY_OFFSET = "-55%";
-const ENTRY_MS = 750;
-const ENTRY_EASE = "cubic-bezier(0.22, 1, 0.36, 1)";
+// Mirrors AuthCard.css's [data-mode="room"] curtain/room-panel timing
+// (8% lead-in delay, --dur-room 760ms total, --ease-curtain's own curve) so
+// the laptop's travel is synchronized frame-for-frame with the curtain
+// dissolving and the room panel assembling. Can't share the CSS custom
+// properties directly (this overlay lives outside .auth-stage's DOM
+// subtree), so the numbers are duplicated here deliberately — keep them in
+// lockstep if either changes.
+const ROOM_MS = 760; // === --dur-room
+const ENTRY_DELAY_MS = 60; // ~0.08 * ROOM_MS, === the curtain/panel lead-in
+const ENTRY_MS = ROOM_MS - ENTRY_DELAY_MS; // travel lands exactly with the panel
+const ENTRY_EASE = "cubic-bezier(0.65, 0, 0.35, 1)"; // matches --ease-curtain
+
+// LaptopIntro's OWN internal closed->code delay (LaptopIntro.tsx's
+// `setTimeout(..., 200)` on stage "closed"). Not modified — just accounted
+// for here, because it's what decides when the lid actually starts rising
+// relative to the moment the rest of the scene settles.
+const LAPTOP_CLOSED_HOLD_MS = 200;
+// How long after the scene settles the lid should start rising (the "short
+// settle" beat). Mounting LaptopIntro this much before its own hold expires
+// is what places the opening there instead of a full 200ms later.
+const LID_LEAD_MS = 140;
+const MOUNT_AT_MS = ROOM_MS - LAPTOP_CLOSED_HOLD_MS + LID_LEAD_MS;
 
 type Phase = "idle" | "entering-start" | "entering-move" | "active";
 
@@ -76,7 +104,11 @@ export function RoomLaptopProvider({ children }: { children: ReactNode }) {
   const [slotEl, setSlotEl] = useState<HTMLElement | null>(null);
   const [rect, setRect] = useState<Rect | null>(null);
   const [phase, setPhase] = useState<Phase>("idle");
-  const entryTimer = useRef<ReturnType<typeof setTimeout>>();
+  const startTimer = useRef<ReturnType<typeof setTimeout>>();
+  const activeTimer = useRef<ReturnType<typeof setTimeout>>();
+  // Wall-clock time entry began, for THIS lineage — lets a slot swap mid-
+  // entry (see below) resume the schedule instead of restarting or losing it.
+  const entryStartRef = useRef<number | null>(null);
 
   const registerSlot = useCallback((el: HTMLElement) => setSlotEl(el), []);
   const releaseSlot = useCallback((el: HTMLElement) => setSlotEl((prev) => (prev === el ? null : prev)), []);
@@ -100,32 +132,62 @@ export function RoomLaptopProvider({ children }: { children: ReactNode }) {
   // (sign-out, or simply no RoomJoinCard mounted anywhere) resets to "idle"
   // so a *future* entry into Room plays the closed-entry beat again, rather
   // than staying "active" forever after the first visit.
+  //
+  // slotEl changes TWICE during a real Auth -> Room entry: once when the
+  // transient curtain-sweep preview registers, and again, mid-flight, when
+  // Index.tsx's real RoomJoinCard registers its own slot right as Auth.tsx
+  // unmounts (both driven by --dur-room, so they land within a few ms of
+  // each other by design — see AuthCard.css). Re-running this effect on that
+  // second registration must RESUME the existing schedule, not restart it
+  // (double the travel) or abandon it (an earlier version keyed the "become
+  // active" timeout to a fresh `setTimeout` on every slotEl change, guarded
+  // by `phase !== "idle"` — so the swap's re-run saw "entering-move", the
+  // guard skipped rescheduling, and the cleanup from the OLD run had already
+  // cleared the pending timer: the laptop got stuck closed forever). Tracking
+  // wall-clock elapsed time since entry actually began (entryStartRef) makes
+  // the correct behavior fall out regardless of how many times the slot
+  // reference changes mid-entry.
   useEffect(() => {
-    clearTimeout(entryTimer.current);
+    clearTimeout(startTimer.current);
+    clearTimeout(activeTimer.current);
     if (!slotEl) {
       setPhase("idle");
+      entryStartRef.current = null;
       return;
     }
-    if (phase !== "idle") return; // already entering/active for this slot lineage
+    if (phase === "active") return; // already fully entered; a later slot swap is transparent
     if (reduceMotion) {
       setPhase("active");
       return;
     }
-    setPhase("entering-start");
-    // Two-frame trick (same one Auth.tsx's own room-mode flip uses): mount
-    // at the off-canvas transform with no transition first, so the browser
-    // has a "before" frame to animate from, then flip to the transitioning
-    // state on the next paint.
-    const raf = requestAnimationFrame(() => setPhase("entering-move"));
-    entryTimer.current = setTimeout(() => setPhase("active"), ENTRY_MS);
-    return () => {
-      cancelAnimationFrame(raf);
-      clearTimeout(entryTimer.current);
-    };
+    if (entryStartRef.current === null) {
+      // First slot registration for this lineage: start the beat.
+      entryStartRef.current = performance.now();
+      setPhase("entering-start");
+      // Two-frame trick (same one Auth.tsx's own room-mode flip uses): mount
+      // at the off-canvas transform with no transition first, so the browser
+      // has a "before" frame to animate from. Then hold for ENTRY_DELAY_MS
+      // (the same lead-in the curtain/room-panel transitions carry) before
+      // flipping to the transitioning state, so all three start moving
+      // together rather than the laptop jumping ahead of the curtain by a
+      // whole frame.
+      const raf = requestAnimationFrame(() => {
+        startTimer.current = setTimeout(() => setPhase("entering-move"), ENTRY_DELAY_MS);
+      });
+      activeTimer.current = setTimeout(() => setPhase("active"), MOUNT_AT_MS);
+      return () => {
+        cancelAnimationFrame(raf);
+        clearTimeout(startTimer.current);
+      };
+    }
+    // A slot swap mid-entry: pick the schedule back up from elapsed time
+    // rather than from zero.
+    if (phase !== "entering-move") setPhase("entering-move");
+    const elapsed = performance.now() - entryStartRef.current;
+    const remaining = Math.max(0, MOUNT_AT_MS - elapsed);
+    activeTimer.current = setTimeout(() => setPhase("active"), remaining);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [slotEl]);
-
-  const entering = phase === "entering-start" || phase === "entering-move";
 
   return (
     <RoomLaptopContext.Provider value={{ registerSlot, releaseSlot }}>
@@ -165,29 +227,46 @@ export function RoomLaptopProvider({ children }: { children: ReactNode }) {
               { position: "fixed", left: "-9999px", top: "-9999px" }
         }
       >
-        {entering ? (
-          // Static closed shape — plain CSS classes, no JS, cannot animate
-          // its own lid/code/etc. Only `transform` moves, eased in from
-          // ENTRY_OFFSET to its resting spot; never opacity (no "pop"), no
-          // scale, no bounce.
+        {phase === "idle" ? null : (
+          // The TRAVELLING WRAPPER — deliberately outside the static-shape /
+          // LaptopIntro branch below, so it stays mounted across that swap
+          // and the entry transition is never interrupted. That's what lets
+          // the real instance mount MID-travel and keep gliding to its
+          // resting spot on the same, still-running transition.
+          //
+          // An earlier version put the transform on the static shape itself,
+          // so the swap could only happen once travel had finished — which
+          // meant LaptopIntro's own 200ms closed hold only started then,
+          // putting the lid-open a full beat after the rest of the scene had
+          // already settled. That gap is exactly what read as "the panel
+          // arrives, and then separately a laptop shows up".
+          //
+          // Only `transform` moves, eased from ENTRY_OFFSET to rest; never
+          // opacity (no "pop"), no scale, no bounce, no overshoot.
           <div
             className="laptop-scene"
             aria-hidden="true"
             style={{
               transform: phase === "entering-start" ? `translateX(${ENTRY_OFFSET})` : "none",
-              transition: phase === "entering-move" ? `transform ${ENTRY_MS}ms ${ENTRY_EASE}` : "none",
+              transition: phase === "entering-start" ? "none" : `transform ${ENTRY_MS}ms ${ENTRY_EASE}`,
             }}
           >
-            <div className="laptop">
-              <div className="laptop__screen" />
-              <div className="laptop__hinge" />
-              <div className="laptop__base" />
-              <div className="laptop__shell" />
-            </div>
+            {phase === "active" ? (
+              <LaptopIntro loop />
+            ) : (
+              // Static closed shape — plain CSS classes, no JS, so it cannot
+              // animate its own lid/code/etc. Same markup and classes
+              // LaptopIntro itself renders while closed, so swapping to the
+              // real instance mid-travel is visually seamless.
+              <div className="laptop">
+                <div className="laptop__screen" />
+                <div className="laptop__hinge" />
+                <div className="laptop__base" />
+                <div className="laptop__shell" />
+              </div>
+            )}
           </div>
-        ) : phase === "active" ? (
-          <LaptopIntro loop />
-        ) : null}
+        )}
       </div>
     </RoomLaptopContext.Provider>
   );

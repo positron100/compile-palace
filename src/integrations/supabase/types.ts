@@ -62,6 +62,36 @@ export type Database = {
         }
         Relationships: []
       }
+      saved_code_sessions: {
+        Row: {
+          code: string
+          created_at: string
+          id: string
+          language: string
+          name: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          code: string
+          created_at?: string
+          id?: string
+          language: string
+          name: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          code?: string
+          created_at?: string
+          id?: string
+          language?: string
+          name?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       rooms: {
         Row: {
           code: string | null

@@ -135,7 +135,7 @@ export function RoomJoinCard({
               >
                 <Button
                   type="submit"
-                  className="room-form__submit cp-pill cp-lift bg-indigo-600 text-white hover:bg-indigo-700"
+                  className="room-form__submit cp-pill cp-lift cp-accent-bg text-white"
                   disabled={joining}
                 >
                   {joining && <Loader2 size={16} className="animate-spin" />}

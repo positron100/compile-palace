@@ -147,15 +147,313 @@
    not "everything is transparent". Theme-aware: dark mode gets its own
    tinted-black tokens rather than just inverting the light ones.
 --------------------------------------------------------------------------- */
-:root {
-  /* The one accent color for the whole journey (Start/Auth/Room/Editor) —
-     was hardcoded as the literal hsl triple in 7 places across AuthCard.css,
-     AuthField.css and RoomJoinCard.css; every consumer now reads this token
-     instead so the editor's re-palette (purple -> indigo) is a one-line
-     change here, not a find-and-replace across files. */
+/* ---------------------------------------------------------------------------
+   Theme system — 4 selectable atmospheres (data-theme on <html>, set by
+   ThemeContext). Lavender is the base palette below (unscoped :root values,
+   also mirrored to [data-theme="lavender"] so an explicit attribute and "no
+   attribute yet" render identically — no flash before ThemeContext's early
+   main.tsx read applies the stored attribute).
+
+   Only 7 tokens are theme-scoped — every one of them was already the single
+   source every consumer read through (--cp-accent itself, or a literal hue
+   duplicated in glass-border/shadow/atmosphere/lift rules); themeing means
+   re-deriving THESE 7, not touching the ~40 call sites that already say
+   `hsl(var(--cp-accent) ...)`. --cp-rainbow-gradient is additional and only
+   used by the Rainbow swatch/selector, never a real surface. */
+:root,
+[data-theme="lavender"] {
   --cp-accent: 243 75% 59%;
   --cp-accent-soft: 243 75% 59% / 0.18;
+  --cp-accent-deep: 243 75% 40%;
+  --cp-accent-pale: 243 75% 90%;
+  --cp-border-tint: 243 40% 70%;
+  --cp-shadow-tint: 243 60% 30%;
+  --cp-atmosphere-1: 243 75% 88%;
+  --cp-atmosphere-2: 260 70% 90%;
+  --cp-rainbow-gradient: linear-gradient(120deg, hsl(243 75% 59%), hsl(260 70% 62%));
+}
+[data-theme="forest"] {
+  --cp-accent: 152 45% 32%;
+  --cp-accent-soft: 152 45% 32% / 0.18;
+  --cp-accent-deep: 152 50% 22%;
+  --cp-accent-pale: 150 40% 88%;
+  --cp-border-tint: 150 30% 55%;
+  --cp-shadow-tint: 150 45% 20%;
+  --cp-atmosphere-1: 150 40% 85%;
+  --cp-atmosphere-2: 165 35% 88%;
+  --cp-rainbow-gradient: linear-gradient(120deg, hsl(152 45% 32%), hsl(165 40% 45%));
+}
+[data-theme="sunset"] {
+  --cp-accent: 22 80% 55%;
+  --cp-accent-soft: 22 80% 55% / 0.18;
+  --cp-accent-deep: 16 75% 42%;
+  --cp-accent-pale: 30 85% 90%;
+  --cp-border-tint: 24 50% 65%;
+  --cp-shadow-tint: 18 60% 30%;
+  --cp-atmosphere-1: 30 85% 88%;
+  --cp-atmosphere-2: 8 75% 87%;
+  --cp-rainbow-gradient: linear-gradient(120deg, hsl(22 80% 55%), hsl(8 75% 60%));
+}
+[data-theme="rainbow"] {
+  /* Lavender stays the base — only the atmosphere's second hue and the
+     selector's own swatch go iridescent, per spec ("iridescent frosted
+     glass", not "rainbow website"). */
+  --cp-accent: 243 75% 59%;
+  --cp-accent-soft: 243 75% 59% / 0.18;
+  --cp-accent-deep: 243 75% 40%;
+  --cp-accent-pale: 243 75% 90%;
+  --cp-border-tint: 243 40% 70%;
+  --cp-shadow-tint: 243 60% 30%;
+  --cp-atmosphere-1: 243 75% 88%;
+  --cp-atmosphere-2: 300 65% 88%;
+  --cp-rainbow-gradient: linear-gradient(
+    120deg,
+    hsl(243 75% 62%),
+    hsl(280 70% 64%),
+    hsl(330 70% 64%),
+    hsl(25 80% 62%),
+    hsl(150 50% 50%),
+    hsl(200 75% 58%)
+  );
+}
 
+/* MODE = light/dark material/luminance, independent of THEME = color
+   atmosphere (`.dark` class + `data-theme` attribute, both set by
+   ThemeContext, never combined into one value). Each theme gets its OWN
+   deepened/richened accent for dark mode (spec: "the selected theme colors
+   themselves should also shift toward the darker, richer, more muted
+   side") rather than one flat dark-lavender accent applying everywhere —
+   hence 4 compound `.dark[data-theme="x"]` blocks, not a single
+   `[data-theme="dark"]` block. Same lightness/saturation-raise recipe
+   applied to each theme's own light-mode hue (raise light so it still
+   reads on dark glass instead of going muddy; keep saturation restrained,
+   no neon). */
+.dark[data-theme="lavender"] {
+  --cp-accent: 243 85% 74%;
+  --cp-accent-soft: 243 85% 74% / 0.18;
+  --cp-accent-deep: 243 70% 58%;
+  --cp-accent-pale: 243 55% 30%;
+  --cp-border-tint: 235 45% 55%;
+  --cp-shadow-tint: 230 84% 4%;
+  --cp-atmosphere-1: 245 55% 22%;
+  --cp-atmosphere-2: 258 45% 18%;
+  --cp-rainbow-gradient: linear-gradient(120deg, hsl(243 85% 74%), hsl(258 55% 55%));
+}
+.dark[data-theme="forest"] {
+  --cp-accent: 152 55% 47%;
+  --cp-accent-soft: 152 55% 47% / 0.18;
+  --cp-accent-deep: 152 50% 40%;
+  --cp-accent-pale: 150 35% 26%;
+  --cp-border-tint: 150 35% 40%;
+  --cp-shadow-tint: 145 70% 6%;
+  --cp-atmosphere-1: 150 45% 20%;
+  --cp-atmosphere-2: 165 40% 16%;
+  --cp-rainbow-gradient: linear-gradient(120deg, hsl(152 55% 47%), hsl(165 45% 38%));
+}
+.dark[data-theme="sunset"] {
+  --cp-accent: 22 85% 66%;
+  --cp-accent-soft: 22 85% 66% / 0.18;
+  --cp-accent-deep: 16 75% 55%;
+  --cp-accent-pale: 22 55% 26%;
+  --cp-border-tint: 22 45% 50%;
+  --cp-shadow-tint: 15 70% 6%;
+  --cp-atmosphere-1: 26 50% 20%;
+  --cp-atmosphere-2: 10 45% 18%;
+  --cp-rainbow-gradient: linear-gradient(120deg, hsl(22 85% 66%), hsl(10 55% 48%));
+}
+.dark[data-theme="rainbow"] {
+  /* Same restraint as light Rainbow — lavender stays the led accent for
+     buttons/icons/borders, the composed regions carry Forest/Sunset. */
+  --cp-accent: 243 85% 74%;
+  --cp-accent-soft: 243 85% 74% / 0.18;
+  --cp-accent-deep: 243 70% 58%;
+  --cp-accent-pale: 243 55% 30%;
+  --cp-border-tint: 235 45% 55%;
+  --cp-shadow-tint: 230 84% 4%;
+  --cp-atmosphere-1: 245 55% 22%;
+  --cp-atmosphere-2: 300 45% 18%;
+  --cp-rainbow-gradient: linear-gradient(120deg, hsl(243 85% 74%), hsl(258 55% 55%));
+}
+/* Base `.cp-atmosphere` ends in a near-white linear-gradient (line ~554) —
+   fine for light mode, but would keep every dark page washed pale
+   underneath the now-dark glass. Deep indigo/violet/midnight base instead
+   ("night sky", not inverted white) — mode-only (not per-theme): the
+   colored radials above it already read var(--cp-atmosphere-1/2), which the
+   compound blocks above already deepen per theme, so this one rule covers
+   all 4 dark combinations without duplicating it 4x. */
+.dark .cp-atmosphere {
+  background:
+    radial-gradient(55% 65% at 20% 22%, hsl(var(--cp-atmosphere-1) / 0.6), transparent 62%),
+    radial-gradient(50% 60% at 85% 78%, hsl(var(--cp-atmosphere-2) / 0.55), transparent 65%),
+    linear-gradient(135deg, hsl(235 45% 8%), hsl(248 40% 10%) 55%, hsl(230 50% 6%) 100%);
+}
+
+/* Rainbow only — composed atmosphere, not a wash. Three soft zones built
+   from Forest's and Sunset's OWN hues (hardcoded here, not through
+   --cp-accent, since --cp-accent stays lavender globally for buttons/icons/
+   borders per spec §5: components stay neutral glass, only the page
+   atmosphere underneath carries the zone color). Radial gradients blend
+   naturally into `.cp-atmosphere`'s existing lavender radials — no hard
+   edges, same mechanism the single-atmosphere themes already use, just
+   three sources instead of one. Left → Room Info (forest), centre/top →
+   editor (lavender, calm for reading code), bottom-right → Output (sunset).
+   Components pick this up simply by being translucent already (nothing new
+   to build). */
+[data-theme="rainbow"] .editor-shell.cp-atmosphere {
+  background-image:
+    radial-gradient(55% 65% at 20% 22%, hsl(var(--cp-atmosphere-1) / 0.5), transparent 62%),
+    radial-gradient(50% 60% at 85% 78%, hsl(var(--cp-atmosphere-2) / 0.42), transparent 65%),
+    radial-gradient(58% 62% at 4% 55%, hsl(152 45% 32% / 0.4), transparent 68%),
+    radial-gradient(58% 62% at 97% 96%, hsl(22 80% 55% / 0.4), transparent 68%);
+}
+/* Same zone principle, everywhere else .cp-atmosphere is used (Start, Auth,
+   Room Join — none of them are `.editor-shell`) — otherwise Rainbow only
+   differed from Lavender by a 40°-hue nudge on --cp-atmosphere-2, invisible
+   in practice. Single-card pages don't have 3 natural regions like the
+   editor, so this is one soft wash (forest + sunset corners layered behind
+   the existing lavender radials + base gradient) rather than 3 literal
+   zones — still visibly "Rainbow", not a 4th copy of the editor's layout. */
+[data-theme="rainbow"] .cp-atmosphere:not(.editor-shell) {
+  background-image:
+    radial-gradient(55% 65% at 20% 22%, hsl(var(--cp-atmosphere-1) / 0.5), transparent 62%),
+    radial-gradient(50% 60% at 85% 78%, hsl(var(--cp-atmosphere-2) / 0.42), transparent 65%),
+    radial-gradient(50% 55% at 6% 90%, hsl(152 45% 32% / 0.32), transparent 65%),
+    radial-gradient(50% 55% at 94% 8%, hsl(22 80% 55% / 0.32), transparent 65%),
+    linear-gradient(135deg, hsl(220 35% 98%), hsl(240 28% 96%) 55%, hsl(243 32% 95%) 100%);
+}
+/* Auth curtain (AuthCard.css) and Room Join's own atmosphere
+   (RoomJoinCard.css) sit ABOVE `.cp-atmosphere`, not inside it — the
+   generic `.cp-atmosphere:not(.editor-shell)` wash above never reaches
+   them, which is why Rainbow read as plain Lavender on Login/Signup/Join
+   Room even though the page background behind the card was already
+   composed. Same restraint as the editor: the curtain's own accent color
+   (--cp-accent, deliberately lavender-locked for Rainbow) stays the
+   dominant base — only its existing decorative sheen layer (::before)
+   gains two subtle forest/sunset corner hints, mirroring "primary surface
+   stays lavender-led, subtle influence at the edges" from the editor. */
+[data-theme="rainbow"] .auth-stage__curtain::before {
+  background-image:
+    radial-gradient(120% 90% at 20% 15%, hsl(0 0% 100% / 0.22), transparent 60%),
+    radial-gradient(65% 70% at 0% 100%, hsl(152 45% 40% / 0.28), transparent 65%),
+    radial-gradient(65% 70% at 100% 0%, hsl(22 80% 55% / 0.28), transparent 65%),
+    linear-gradient(158deg, hsl(0 0% 100% / 0.28), transparent 42%, hsl(243 60% 30% / 0.3));
+}
+/* Root cause of "Auth still reads as Lavender" in Rainbow: `.auth-stage__curtain`'s
+   own `background-color: hsl(var(--accent))` (AuthCard.css:126) is SOLID and
+   OPAQUE — it's the dominant visual of the whole component, and --accent
+   resolves to --cp-accent, which stays lavender-locked for Rainbow. The ::before
+   sheen above only ever added faint corner hints on TOP of that solid lavender
+   base, so Forest/Sunset never had real presence. Fix: for Rainbow only, replace
+   the solid fill with a full-bleed gradient built from the three themes' own
+   accent hues — three radial color pools (generous 60% falloff so none of them
+   reads as a hard edge) plus a linear-gradient underneath for full coverage
+   between them, giving roughly equal visual weight to all three. Curtain
+   geometry/transform/timing/opacity are untouched; only this background swaps. */
+[data-theme="rainbow"] .auth-stage__curtain {
+  background-color: hsl(190 40% 45%);
+  background-image:
+    radial-gradient(85% 70% at 15% 20%, hsl(243 75% 59% / 0.95), transparent 60%),
+    radial-gradient(85% 70% at 50% 55%, hsl(152 45% 32% / 0.9), transparent 60%),
+    radial-gradient(85% 70% at 85% 85%, hsl(22 80% 55% / 0.95), transparent 60%),
+    linear-gradient(165deg, hsl(243 75% 59%), hsl(152 45% 32%) 50%, hsl(22 80% 55%));
+}
+/* Room Join's viewport paints its own background directly (not through the
+   `.cp-atmosphere` class), so it needs the same 3-corner composition
+   spelled out here rather than inheriting it — same hues/opacities as the
+   generic wash above, layered onto Room Join's existing 2-radial-plus-base
+   structure so the geometry (radial positions/sizes) it already tuned for
+   its own layout is preserved. */
+[data-theme="rainbow"] .room-stage__viewport {
+  background:
+    radial-gradient(55% 65% at 20% 22%, hsl(var(--cp-atmosphere-1) / 0.55), transparent 62%),
+    radial-gradient(50% 60% at 85% 78%, hsl(var(--cp-atmosphere-2) / 0.48), transparent 65%),
+    radial-gradient(50% 55% at 6% 90%, hsl(152 45% 32% / 0.3), transparent 65%),
+    radial-gradient(50% 55% at 94% 8%, hsl(22 80% 55% / 0.3), transparent 65%),
+    linear-gradient(135deg, hsl(220 35% 98%), hsl(240 28% 96%) 55%, hsl(243 32% 95%) 100%);
+}
+
+/* Dark — Room Join's viewport paints its own background directly (not
+   through `.cp-atmosphere`), same gap Rainbow had here; same fix, deep
+   atmosphere instead of a 3-hue blend. Mode-only (covers Dark+Lavender/
+   Forest/Sunset via the theme-deepened atmosphere vars); Dark+Rainbow gets
+   its own compound override below since it needs the literal 3-hue blend,
+   not the single-atmosphere version. */
+.dark .room-stage__viewport {
+  background:
+    radial-gradient(55% 65% at 20% 22%, hsl(var(--cp-atmosphere-1) / 0.65), transparent 62%),
+    radial-gradient(50% 60% at 85% 78%, hsl(var(--cp-atmosphere-2) / 0.6), transparent 65%),
+    linear-gradient(135deg, hsl(235 45% 8%), hsl(248 40% 10%) 55%, hsl(230 50% 6%) 100%);
+}
+/* Dark+Rainbow overrides for the 3 rules above that hardcode LIGHT-lightness
+   hues/base-gradients (never expressed through --cp-accent, since Rainbow's
+   regional composition is intentionally literal per-hue, not token-driven) —
+   same hue positions, lightness/alpha pulled down to read as "deep smoked
+   glass + colored ambient light" instead of a bright wash on a dark page. */
+.dark[data-theme="rainbow"] .cp-atmosphere:not(.editor-shell) {
+  background-image:
+    radial-gradient(55% 65% at 20% 22%, hsl(var(--cp-atmosphere-1) / 0.55), transparent 62%),
+    radial-gradient(50% 60% at 85% 78%, hsl(var(--cp-atmosphere-2) / 0.48), transparent 65%),
+    radial-gradient(50% 55% at 6% 90%, hsl(152 50% 22% / 0.4), transparent 65%),
+    radial-gradient(50% 55% at 94% 8%, hsl(16 70% 30% / 0.4), transparent 65%),
+    linear-gradient(135deg, hsl(235 45% 8%), hsl(248 40% 10%) 55%, hsl(230 50% 6%) 100%);
+}
+.dark[data-theme="rainbow"] .room-stage__viewport {
+  background:
+    radial-gradient(55% 65% at 20% 22%, hsl(var(--cp-atmosphere-1) / 0.6), transparent 62%),
+    radial-gradient(50% 60% at 85% 78%, hsl(var(--cp-atmosphere-2) / 0.52), transparent 65%),
+    radial-gradient(50% 55% at 6% 90%, hsl(152 50% 22% / 0.36), transparent 65%),
+    radial-gradient(50% 55% at 94% 8%, hsl(16 70% 30% / 0.36), transparent 65%),
+    linear-gradient(135deg, hsl(235 45% 8%), hsl(248 40% 10%) 55%, hsl(230 50% 6%) 100%);
+}
+.dark[data-theme="rainbow"] .auth-stage__curtain {
+  background-color: hsl(230 40% 14%);
+  background-image:
+    radial-gradient(85% 70% at 15% 20%, hsl(243 75% 45% / 0.9), transparent 60%),
+    radial-gradient(85% 70% at 50% 55%, hsl(152 50% 22% / 0.85), transparent 60%),
+    radial-gradient(85% 70% at 85% 85%, hsl(16 70% 30% / 0.9), transparent 60%),
+    linear-gradient(165deg, hsl(243 60% 30%), hsl(152 45% 20%) 50%, hsl(16 60% 24%));
+}
+
+/* Brand logo (BrandLogo.tsx) — theme-aware via the same tokens every other
+   themed surface reads, not a per-theme asset. Rainbow gets a subtle
+   gradient instead of the flat accent, via a CSS var each SVG instance sets
+   inline to its own unique gradient url() (see BrandLogo.tsx) so multiple
+   instances never collide over one shared id. */
+.cp-logo-mark__body {
+  fill: hsl(var(--cp-accent));
+}
+.cp-logo-mark__cube {
+  fill: hsl(var(--cp-accent-deep));
+}
+[data-theme="rainbow"] .cp-logo-mark__body {
+  fill: var(--cp-logo-rainbow-fill);
+}
+
+/* Topbar stays connective/neutral (§10) — a very low-opacity sweep across
+   all three hues rather than a fourth loud color. */
+[data-theme="rainbow"] .editor-topbar {
+  background-image: linear-gradient(
+    90deg,
+    hsl(152 45% 32% / 0.05),
+    hsl(243 75% 59% / 0.06) 50%,
+    hsl(22 80% 55% / 0.05)
+  );
+}
+/* Cubes: pure per-node style tint cycling through the same 3 hues at low
+   opacity — the cube array/positions/keys (useRef-generated) are completely
+   untouched, this only overrides the inline backgroundColor via CSS
+   specificity on 1-of-3 nth-child buckets. */
+[data-theme="rainbow"] .editor-cube-field .squares li:nth-child(3n+1) {
+  background-color: hsl(152 45% 32% / 0.35) !important;
+}
+[data-theme="rainbow"] .editor-cube-field .squares li:nth-child(3n+2) {
+  background-color: hsl(243 75% 59% / 0.35) !important;
+}
+[data-theme="rainbow"] .editor-cube-field .squares li:nth-child(3n) {
+  background-color: hsl(22 80% 55% / 0.35) !important;
+}
+
+:root {
   /* Shared control geometry — every pill field/submit across Login, Signup
      and Room Join reads these instead of repeating the numbers per file, so
      the three forms cannot drift apart. */
@@ -166,29 +464,48 @@
 
   --glass-blur: 18px;
   --glass-primary-bg: hsl(0 0% 100% / 0.6);
-  --glass-primary-border: hsl(243 40% 70% / 0.35);
+  --glass-primary-border: hsl(var(--cp-border-tint) / 0.35);
   --glass-primary-sheen: linear-gradient(160deg, hsl(0 0% 100% / 0.55), transparent 45%);
-  --glass-primary-shadow: 0 30px 60px -30px hsl(243 60% 30% / 0.35);
+  --glass-primary-shadow: 0 30px 60px -30px hsl(var(--cp-shadow-tint) / 0.35);
 
   --glass-secondary-bg: hsl(0 0% 100% / 0.5);
-  --glass-secondary-border: hsl(243 30% 70% / 0.3);
-  --glass-secondary-shadow: 0 14px 30px -18px hsl(243 60% 30% / 0.3);
+  --glass-secondary-border: hsl(var(--cp-border-tint) / 0.3);
+  --glass-secondary-shadow: 0 14px 30px -18px hsl(var(--cp-shadow-tint) / 0.3);
 
   --glass-subtle-bg: hsl(0 0% 100% / 0.35);
-  --glass-subtle-border: hsl(243 20% 70% / 0.22);
+  --glass-subtle-border: hsl(var(--cp-border-tint) / 0.22);
 }
+/* Mode switch (Light<->Dark) uses a restrained crossfade rather than the
+   circular reveal (that's theme-specific, per stageTransition.ts) — plain
+   CSS transitions on the surfaces that actually carry mode's colors, no new
+   animation engine. Respects prefers-reduced-motion by simply not applying. */
+@media (prefers-reduced-motion: no-preference) {
+  /* NOT .auth-stage__curtain or .room-stage__viewport here — both already
+     own their own `transition` declarations elsewhere (AuthCard.css /
+     RoomJoinCard.css) for existing geometry animations, and `transition` is
+     a shorthand: a second rule setting it on the same selector replaces
+     those entirely instead of adding to them, silently killing the curtain
+     slide/bulge. Their mode-crossfade is appended to their own existing
+     declarations instead (see those files). */
+  body,
+  .cp-atmosphere,
+  .editor-topbar {
+    transition: background-color 260ms ease, border-color 260ms ease;
+  }
+}
+
 .dark {
   --glass-primary-bg: hsl(230 35% 14% / 0.55);
-  --glass-primary-border: hsl(243 40% 60% / 0.25);
+  --glass-primary-border: hsl(var(--cp-border-tint) / 0.25);
   --glass-primary-sheen: linear-gradient(160deg, hsl(230 40% 40% / 0.3), transparent 45%);
   --glass-primary-shadow: 0 30px 60px -30px hsl(230 84% 4% / 0.6);
 
   --glass-secondary-bg: hsl(230 35% 14% / 0.45);
-  --glass-secondary-border: hsl(243 30% 60% / 0.2);
+  --glass-secondary-border: hsl(var(--cp-border-tint) / 0.2);
   --glass-secondary-shadow: 0 14px 30px -18px hsl(230 84% 4% / 0.5);
 
   --glass-subtle-bg: hsl(230 35% 14% / 0.3);
-  --glass-subtle-border: hsl(243 20% 60% / 0.16);
+  --glass-subtle-border: hsl(var(--cp-border-tint) / 0.16);
 }
 
 /* No `position` here on purpose: these plain (unlayered) rules sit after
@@ -242,6 +559,65 @@
   }
 }
 
+/* ---------------------------------------------------------------------------
+   Modern tooltip (components/ModernTooltip.tsx) — replaces native `title`
+   tooltips on icon-only controls app-wide with something that matches the
+   frosted-glass/pill language instead of the browser's default box. Reuses
+   `--glass-secondary-*` tokens (same material as the output panel/language
+   dropdown) rather than inventing new colors. No arrow — a floating pill
+   reads cleaner/more modern than a bootstrap-style pointer tail.
+--------------------------------------------------------------------------- */
+.cp-tooltip {
+  z-index: 60;
+  max-width: 16rem;
+  padding: 0.3125rem 0.75rem;
+  border-radius: 9999px;
+  background-color: var(--glass-secondary-bg);
+  border: 1px solid var(--glass-secondary-border);
+  box-shadow: var(--glass-secondary-shadow);
+  backdrop-filter: blur(calc(var(--glass-blur) * 0.5)) saturate(1.3);
+  -webkit-backdrop-filter: blur(calc(var(--glass-blur) * 0.5)) saturate(1.3);
+  font-size: 0.75rem;
+  font-weight: 500;
+  line-height: 1.2;
+  color: hsl(230 45% 18%);
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transform: translateY(4px) scale(0.97);
+  transition: opacity 180ms var(--cp-ease-standard, cubic-bezier(0.16, 1, 0.3, 1)),
+    transform 180ms var(--cp-ease-standard, cubic-bezier(0.16, 1, 0.3, 1));
+  will-change: transform, opacity;
+}
+.dark .cp-tooltip {
+  color: hsl(230 20% 92%);
+}
+.cp-tooltip[data-state="delayed-open"],
+.cp-tooltip[data-state="instant-open"] {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+}
+.cp-tooltip[data-state="closed"] {
+  opacity: 0;
+  transform: translateY(4px) scale(0.97);
+}
+/* Radix flips the translate direction to match which side the tooltip
+   actually landed on (collision-avoided), so it always animates "out of"
+   the trigger rather than in a fixed screen direction regardless of side. */
+.cp-tooltip[data-side="bottom"] {
+  transform: translateY(-4px) scale(0.97);
+}
+.cp-tooltip[data-side="bottom"][data-state="delayed-open"],
+.cp-tooltip[data-side="bottom"][data-state="instant-open"] {
+  transform: translateY(0) scale(1);
+}
+@media (prefers-reduced-motion: reduce) {
+  .cp-tooltip {
+    transition-duration: 0.01ms !important;
+    transform: none !important;
+  }
+}
+
 /* Shared pill geometry + physical hover/press response, used across the
    auth forms and the start/join screens so buttons and fields read as one
    consistent control language. */
@@ -253,12 +629,43 @@
 }
 .cp-lift:hover:not(:disabled) {
   translate: 0 -2px;
-  box-shadow: 0 12px 24px -14px hsl(243 75% 40% / 0.55);
+  box-shadow: 0 12px 24px -14px hsl(var(--cp-accent-deep) / 0.55);
 }
 .cp-lift:active:not(:disabled) {
   translate: 0;
   filter: brightness(0.96);
-  box-shadow: 0 2px 6px -2px hsl(243 75% 40% / 0.45);
+  box-shadow: 0 2px 6px -2px hsl(var(--cp-accent-deep) / 0.45);
+}
+
+/* Primary accent CTAs (Login/Register submit, Join Room, Run, Start's
+   create-room button) — was hardcoded Tailwind `bg-indigo-600
+   hover:bg-indigo-700` in 5 places, so these never re-tinted with the rest
+   of the theme system. Same visual weight, now theme-aware. */
+.cp-accent-bg {
+  background-color: hsl(var(--cp-accent));
+}
+.cp-accent-bg:hover:not(:disabled) {
+  background-color: hsl(var(--cp-accent-deep));
+}
+/* Rainbow: same 3-pool blend as the auth curtain (same hues/recipe), reused
+   here instead of the solid --cp-accent fill so every CTA sharing this class
+   (Run, Login/Register submit, Join Room, Start's create-room, dialog
+   primary) picks it up from one place. Kept slightly more opaque/less
+   diffuse than the curtain since text sits directly on top. Hover just
+   brightens the same gradient rather than swapping to a solid -deep color,
+   since there's no single "deep" tone across 3 hues. */
+[data-theme="rainbow"] .cp-accent-bg,
+[data-theme="rainbow"] .cp-glass-dialog__btn--primary {
+  background-color: hsl(190 40% 40%);
+  background-image:
+    radial-gradient(105% 115% at 12% 25%, hsl(243 75% 59% / 0.92), transparent 74%),
+    radial-gradient(105% 115% at 50% 50%, hsl(152 45% 32% / 0.88), transparent 74%),
+    radial-gradient(105% 115% at 88% 80%, hsl(22 80% 55% / 0.92), transparent 74%),
+    linear-gradient(165deg, hsl(243 75% 59%), hsl(152 45% 32%) 50%, hsl(22 80% 55%));
+}
+[data-theme="rainbow"] .cp-accent-bg:hover:not(:disabled) {
+  background-color: hsl(190 40% 40%);
+  filter: brightness(1.12);
 }
 @media (prefers-reduced-motion: reduce) {
   .cp-lift {
@@ -274,8 +681,8 @@
    keyframes, no added repaint cost. */
 .cp-atmosphere {
   background:
-    radial-gradient(55% 65% at 20% 22%, hsl(243 75% 88% / 0.5), transparent 62%),
-    radial-gradient(50% 60% at 85% 78%, hsl(260 70% 90% / 0.42), transparent 65%),
+    radial-gradient(55% 65% at 20% 22%, hsl(var(--cp-atmosphere-1) / 0.5), transparent 62%),
+    radial-gradient(50% 60% at 85% 78%, hsl(var(--cp-atmosphere-2) / 0.42), transparent 65%),
     linear-gradient(135deg, hsl(220 35% 98%), hsl(240 28% 96%) 55%, hsl(243 32% 95%) 100%);
 }
 
@@ -327,4 +734,31 @@
    is a finishing touch, not the thing doing the "not a flat disc" work. */
 :root[data-stage-transition="circle-forward"]::view-transition-new(root) {
   filter: saturate(1.08) brightness(1.015);
+}
+
+/* --- Editor-content reveal (Saved Code -> Open), lib/stageTransition.ts's
+   startEditorRevealTransition — a second, INDEPENDENT named view-transition
+   group ("cp-editor-reveal"), never "root", so it can never collide with or
+   alter the Room -> Editor route transition above. The name is only present
+   on .editor-surface for the instant this specific transition runs (class
+   added/removed by the JS itself), so at every other moment — including
+   during the Room -> Editor route transition — this element carries no
+   view-transition-name at all. Forward-only (no reverse case: this is a
+   same-page content swap, not a route with a "back"). */
+.cp-editor-reveal-target {
+  view-transition-name: cp-editor-reveal;
+}
+::view-transition-group(cp-editor-reveal) {
+  animation: none;
+}
+::view-transition-old(cp-editor-reveal),
+::view-transition-new(cp-editor-reveal) {
+  animation: none;
+  mix-blend-mode: normal;
+}
+::view-transition-old(cp-editor-reveal) {
+  z-index: 1;
+}
+::view-transition-new(cp-editor-reveal) {
+  z-index: 2;
 }

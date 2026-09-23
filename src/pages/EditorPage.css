@@ -57,6 +57,25 @@
   pointer-events: none;
   z-index: -1;
 }
+/* --cp-accent stays lavender-locked in Rainbow by design (see the
+   theme-selector comment below), so EVERY liquid-glass control on this page
+   inherits a lavender-only hover glow there — not just the theme toggle.
+   Reported on Leave Room/Sign Out; root cause is app-wide for any .cp-liquid
+   consumer, so fixing it once here (not per-button) is correct. Icon/text
+   colors (e.g. Leave Room's destructive red) are untouched — only this glow. */
+[data-theme="rainbow"] .cp-liquid::before {
+  /* Same box size (5rem 5rem) and same 0.18 peak alpha/70% falloff as the
+     base rule — only the hue changes across the 3 stops, packed into that
+     same 70% radius instead of stretched to 100%, so this doesn't read as a
+     visibly bigger/stronger glow than Lavender/Forest/Sunset. */
+  background: radial-gradient(
+    5rem 5rem at var(--mx) var(--my),
+    hsl(243 75% 59% / 0.18) 0%,
+    hsl(152 45% 32% / 0.18) 35%,
+    hsl(22 80% 55% / 0.18) 55%,
+    transparent 70%
+  );
+}
 @media (hover: hover) and (pointer: fine) {
   .cp-liquid:hover {
     background-color: var(--glass-secondary-bg);
@@ -184,6 +203,104 @@
   color: hsl(var(--cp-accent));
 }
 
+/* --- Theme selector --- same trigger/panel material as .editor-lang above,
+   just a narrower list with a color swatch per row instead of a checkmark
+   list. Swatch colors are static per-theme (not `--cp-accent`, which is
+   itself theme-scoped and would make every swatch show the CURRENT theme's
+   color) so all 4 options stay visibly distinct regardless of which theme
+   is currently active. */
+.theme-selector {
+  position: relative;
+}
+/* Theme toggle icon outline (Palette icon, distinct from the BrandLogo) —
+   Lucide renders `stroke="currentColor"` on the outer <svg>, so setting
+   `color` here recolors the outline for Lavender/Forest/Sunset without
+   touching icon markup, size, or the trigger's own hover/liquid-glass rules
+   above. Rainbow can't express a gradient through `color`, so it points
+   `stroke` straight at the gradient defined once in ThemeSelector.tsx. */
+.theme-selector__trigger {
+  color: hsl(var(--cp-accent));
+}
+[data-theme="rainbow"] .theme-selector__trigger svg {
+  stroke: url(#cp-theme-toggle-rainbow);
+}
+/* Hover glow for this trigger is now covered by the app-wide
+   `[data-theme="rainbow"] .cp-liquid::before` rule above the base
+   .cp-liquid definition — no per-button override needed here anymore. */
+.theme-selector__panel {
+  position: absolute;
+  top: calc(100% + 0.5rem);
+  right: 0;
+  z-index: 40;
+  width: 11rem;
+  max-width: calc(100vw - 2rem);
+  border-radius: 1rem;
+  padding: 0.375rem;
+  transform-origin: top right;
+  background-color: var(--glass-primary-bg);
+  background-image: linear-gradient(180deg, hsl(var(--cp-accent) / 0.08), transparent 40%), var(--glass-primary-sheen);
+  backdrop-filter: blur(var(--glass-blur)) saturate(1.4);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(1.4);
+  box-shadow: 0 24px 48px -20px hsl(230 60% 10% / 0.35), 0 4px 12px -6px hsl(230 60% 10% / 0.2);
+  border: 1px solid var(--glass-primary-border);
+}
+.theme-selector__option {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  width: 100%;
+  height: 2.25rem;
+  padding: 0 0.625rem;
+  border-radius: 0.6rem;
+  font-size: 0.8125rem;
+  text-align: left;
+  transition: background-color 140ms var(--cp-ease-standard);
+}
+.theme-selector__option:hover,
+.theme-selector__option:focus-visible {
+  background-color: hsl(var(--cp-accent) / 0.12);
+  outline: none;
+}
+.theme-selector__option[data-selected="true"] {
+  font-weight: 600;
+  color: hsl(var(--cp-accent));
+}
+.theme-selector__option[data-selected="true"] .theme-selector__swatch {
+  box-shadow: 0 0 0 2px hsl(var(--cp-accent) / 0.35);
+}
+.theme-selector__swatch {
+  flex-shrink: 0;
+  width: 0.875rem;
+  height: 0.875rem;
+  border-radius: 9999px;
+  border: 1px solid hsl(0 0% 100% / 0.4);
+}
+.theme-selector__swatch[data-theme-swatch="lavender"] {
+  background: hsl(243 75% 59%);
+}
+.theme-selector__swatch[data-theme-swatch="forest"] {
+  background: hsl(152 45% 32%);
+}
+.theme-selector__swatch[data-theme-swatch="sunset"] {
+  background: hsl(22 80% 55%);
+}
+.theme-selector__swatch[data-theme-swatch="rainbow"] {
+  /* Hardcoded, not var(--cp-rainbow-gradient) — that token is theme-scoped
+     to whichever theme is CURRENTLY active, so it would render as a 2-stop
+     lavender/forest/sunset gradient instead of the true iridescent one
+     whenever a non-rainbow theme is active. This swatch always represents
+     the Rainbow option itself, regardless of current theme. */
+  background: linear-gradient(
+    120deg,
+    hsl(243 75% 62%),
+    hsl(280 70% 64%),
+    hsl(330 70% 64%),
+    hsl(25 80% 62%),
+    hsl(150 50% 50%),
+    hsl(200 75% 58%)
+  );
+}
+
 /* --- Top bar ---
    Section 9/10: was flush against the viewport edges with a flat
    border-bottom — every other Compile Palace surface (editor-surface,
@@ -207,10 +324,19 @@
   z-index: 30;
 }
 .editor-topbar__brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
   font-weight: 700;
   font-size: 1rem;
   color: hsl(var(--cp-accent));
   white-space: nowrap;
+}
+.editor-topbar__brand-icon {
+  width: 1.5rem;
+  height: 1.5rem;
+  border-radius: 0.375rem;
+  flex-shrink: 0;
 }
 /* Section 10 — logical groups (language context / status+room chips /
    action icons / Run) via nested flex rows with their own gap, plus a
@@ -309,6 +435,17 @@
   overflow: hidden;
   opacity: 0.8;
   pointer-events: none;
+}
+/* Rainbow theme's one ambient touch (spec: "ambient background glow" is the
+   preferred place for the iridescent gradient, not per-component color) — a
+   pseudo-element wash, never the field's own background/opacity, so cube
+   identity/config is untouched regardless of theme. */
+[data-theme="rainbow"] .editor-cube-field::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: var(--cp-rainbow-gradient);
+  opacity: 0.05;
 }
 /* Deliberately no `prefers-reduced-motion` override here: index.css's
    shared `.squares`/`.animate-float` system has none either (verified — the

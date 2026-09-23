@@ -18,6 +18,8 @@ import { Play, Copy, LogOut, Users, Menu, ChevronLeft, ChevronRight, ChevronsLef
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTitle, SheetDescription } from "@/components/ui/sheet";
 import { LanguageDropdown } from "@/components/editor/LanguageDropdown";
+import { ThemeSelector } from "@/components/editor/ThemeSelector";
+import { ModeSelector } from "@/components/editor/ModeSelector";
 import { ModernTooltip } from "@/components/ModernTooltip";
 import { InlineSaveForm } from "@/components/editor/InlineSaveForm";
 import { SavedCodeHistory } from "@/components/editor/SavedCodeHistory";
@@ -35,6 +37,7 @@ import {
 } from "../services/roomService";
 import { debounce } from 'lodash';
 import { useLiquidGlass } from "@/hooks/use-liquid-glass";
+import { BrandLogo } from "@/components/BrandLogo";
 import "./EditorPage.css";
 
 function EditorPage() {
@@ -67,7 +70,7 @@ function EditorPage() {
   const [outputExpanded, setOutputExpanded] = useState(false);
   const wasOutputOpenRef = useRef(false);
 
-  const { user, loading: authLoading } = useAuth();
+  const { user, loading: authLoading, signingOut, setSigningOut } = useAuth();
   const [profile, setProfile] = useState<any>(null);
   const [initialCode, setInitialCode] = useState<string | null>(null);
   const hasJoinedRef = useRef(false);
@@ -309,11 +312,11 @@ function EditorPage() {
   }, [roomId, username, updateClientsList]);
 
   useEffect(() => {
-    if (initialized && !user && !authLoading) {
+    if (initialized && !user && !authLoading && !signingOut) {
       toast.error("Please sign in to join a room");
       reactNavigator("/auth", { shape: 'circle' });
     }
-  }, [initialized, user, authLoading, reactNavigator]);
+  }, [initialized, user, authLoading, signingOut, reactNavigator]);
 
   // Cleanup when leaving the room
   useEffect(() => {
@@ -526,6 +529,7 @@ function EditorPage() {
     // missing!" once the first has already cleared the session.
     if (signingOutRef.current) return;
     signingOutRef.current = true;
+    setSigningOut(true);
 
     const r = e.currentTarget.getBoundingClientRect();
     const origin = { x: r.left + r.width / 2, y: r.top + r.height / 2 };
@@ -534,11 +538,15 @@ function EditorPage() {
     // Reset unconditionally — see Index.tsx's Room sign-out for why a
     // guard that only clears on the error path can get stuck permanently.
     signingOutRef.current = false;
-    if (error) {
-      if (!/auth session missing/i.test(error.message)) {
-        toast.error(error.message);
-        return;
-      }
+    // Not reset on the success path: the navigate below moves the route
+    // to "/" where this component (and RequireAuth) unmount anyway. On
+    // the genuine-error path below, sign-out didn't happen and this route
+    // stays mounted, so it must clear or every later sign-out attempt
+    // stays wrongly deferred.
+    if (error && !/auth session missing/i.test(error.message)) {
+      setSigningOut(false);
+      toast.error(error.message);
+      return;
     }
     // AuthContext's SIGNED_OUT event is authoritative for auth state; this
     // navigate only decides where the now-unauthenticated app lands — back
@@ -758,7 +766,7 @@ function EditorPage() {
           onClick={handleCompile}
           disabled={isCompiling}
           data-state={runJustSucceeded ? "success" : undefined}
-          className="editor-run-btn cp-pill cp-lift bg-indigo-600 hover:bg-indigo-700 text-white h-8 px-4 gap-1.5"
+          className="editor-run-btn cp-pill cp-lift cp-accent-bg text-white h-8 px-4 gap-1.5"
         >
           {isCompiling ? (
             <Loader2 size={15} className="animate-spin" />
@@ -778,7 +786,10 @@ function EditorPage() {
     return (
       <div className="min-h-screen flex items-center justify-center bg-white">
         <div className="text-center">
-          <div className="animate-spin h-10 w-10 border-4 border-indigo-600 border-t-transparent rounded-full mx-auto mb-4"/>
+          <div
+            className="animate-spin h-10 w-10 border-4 border-t-transparent rounded-full mx-auto mb-4"
+            style={{ borderColor: "hsl(var(--cp-accent))", borderTopColor: "transparent" }}
+          />
           <p className="text-gray-600">Loading...</p>
         </div>
       </div>
@@ -795,7 +806,7 @@ function EditorPage() {
   }
 
   return (
-    <div className="editor-shell cp-atmosphere text-gray-800">
+    <div className="editor-shell cp-atmosphere text-foreground">
       <header className="editor-topbar glass-secondary">
         <ModernTooltip content="Open Room Panel" side="bottom">
           <button
@@ -808,7 +819,10 @@ function EditorPage() {
           </button>
         </ModernTooltip>
 
-        <span className="editor-topbar__brand">Code Palace</span>
+        <span className="editor-topbar__brand">
+          <BrandLogo size={24} className="editor-topbar__brand-icon" />
+          Code Palace
+        </span>
 
         <LanguageDropdown
           options={languageOptions}
@@ -872,6 +886,8 @@ function EditorPage() {
                 {outputLayout === "bottom" ? <PanelRight size={15} /> : <PanelBottom size={15} />}
               </LiquidButton>
             </ModernTooltip>
+            <ThemeSelector />
+            <ModeSelector />
           </div>
           <RunButton />
         </div>
@@ -898,8 +914,9 @@ function EditorPage() {
                 style={{
                   "--i": cfg.i,
                   "--j": cfg.j,
+                  backgroundColor: "hsl(var(--cp-accent) / 0.45)",
                 } as React.CSSProperties}
-                className="bg-indigo-500/45 absolute list-none rounded-lg animate-float"
+                className="absolute list-none rounded-lg animate-float"
               />
             ))}
           </ul>

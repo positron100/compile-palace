@@ -29,13 +29,13 @@
    (applied by useMagnetic straight to .auth-field__lift), never a shadow. */
 .auth-field__wrap:focus-within {
   translate: 0 -2px;
-  box-shadow: 0 10px 24px -12px hsl(243 75% 45% / 0.35);
+  box-shadow: 0 10px 24px -12px hsl(var(--cp-accent-deep) / 0.35);
 }
 /* Pressed: a subtle physical compression on top of the focus lift, echoing
    .cp-lift's :active treatment on buttons. */
 .auth-field__wrap:has(.auth-field__control:active) {
   scale: 0.99;
-  box-shadow: 0 6px 14px -10px hsl(243 75% 45% / 0.4);
+  box-shadow: 0 6px 14px -10px hsl(var(--cp-accent-deep) / 0.4);
 }
 
 .auth-field__icon {
@@ -74,7 +74,7 @@
 .auth-field__control:focus {
   outline: none;
   border-color: hsl(var(--cp-accent) / 0.7);
-  box-shadow: inset 0 1px 0 hsl(243 75% 90% / 0.5);
+  box-shadow: inset 0 1px 0 hsl(var(--cp-accent-pale) / 0.5);
 }
 .auth-field__control[data-kbd-focus="true"]:focus {
   outline: 2px solid hsl(var(--cp-accent));

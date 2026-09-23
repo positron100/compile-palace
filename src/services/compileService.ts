@@ -1,8 +1,9 @@
 
-const JUDGE0_API_URL = "https://judge0-ce.p.rapidapi.com";
-const API_KEY = "8f596800e4msh08195884220a91fp175c80jsnab3c93d55017";
+import { executeCode } from "./execution/executionService";
+import { ExecutionResult } from "./execution/types";
 
-// Available language options with Judge0
+// Available language options — unchanged (still Judge0's own ids/names,
+// the one stable id both providers key off via languageMap.ts).
 export const languageOptions = [
   { id: 63, name: "JavaScript (Node.js 12.14.0)" },
   { id: 71, name: "Python (3.8.1)" },
@@ -16,86 +17,45 @@ export const languageOptions = [
   { id: 83, name: "Swift (5.1.3)" },
 ];
 
+// Legacy shape the Output UI (OutputDrawer/OutputSection) was already built
+// around — status.id 3 = success, 6 = compilation error, anything else =
+// generic failure. Kept as-is on purpose so this refactor required zero UI
+// changes; the real provider abstraction lives in ./execution/.
 interface SubmissionResult {
-  token?: string;
-  status?: {
-    id: number;
-    description: string;
-  };
+  status?: { id: number; description: string };
   stdout?: string;
   stderr?: string;
   compile_output?: string;
   time?: string;
   memory?: string;
+  provider?: "judge0" | "jdoodle";
 }
 
-// Function to submit code for compilation
+function toLegacyResult(result: ExecutionResult): SubmissionResult {
+  const statusId: Record<ExecutionResult["status"], number> = {
+    SUCCESS: 3,
+    COMPILATION_ERROR: 6,
+    TIMEOUT: 5, // Judge0's own real "Time Limit Exceeded" id — kept for semantic consistency, UI doesn't special-case it beyond != 3/6.
+    RUNTIME_ERROR: 4,
+    PROVIDER_UNAVAILABLE: 13, // Judge0's own real "Internal Error" id — closest existing semantic match.
+    ERROR: 13,
+    RUNNING: 2,
+  };
+  return {
+    status: { id: statusId[result.status], description: result.statusDescription },
+    stdout: result.stdout ?? undefined,
+    stderr: result.stderr ?? undefined,
+    compile_output: result.compileOutput ?? undefined,
+    time: result.time ?? undefined,
+    memory: result.memory ?? undefined,
+    provider: result.provider,
+  };
+}
+
+// Public API is unchanged (same name/signature EditorPage.tsx already
+// calls) — internally it now goes through the Judge0-primary/JDoodle-
+// fallback CodeExecutionService instead of talking to Judge0 directly.
 export const submitCode = async (languageId: number, sourceCode: string, stdin: string = ""): Promise<SubmissionResult> => {
-  const options = {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      "X-RapidAPI-Key": API_KEY,
-      "X-RapidAPI-Host": "judge0-ce.p.rapidapi.com",
-    },
-    body: JSON.stringify({
-      language_id: languageId,
-      source_code: sourceCode,
-      stdin: stdin,
-    }),
-  };
-
-  try {
-    // Submit the code and get the token
-    const response = await fetch(`${JUDGE0_API_URL}/submissions`, options);
-    const result = await response.json() as SubmissionResult;
-    
-    if (result.token) {
-      return await getSubmissionResult(result.token);
-    } else {
-      throw new Error("No token received from Judge0 API");
-    }
-  } catch (error) {
-    console.error("Error submitting code:", error);
-    throw error;
-  }
-};
-
-// Function to get the result of a submission by token
-export const getSubmissionResult = async (token: string): Promise<SubmissionResult> => {
-  const options = {
-    method: "GET",
-    headers: {
-      "X-RapidAPI-Key": API_KEY,
-      "X-RapidAPI-Host": "judge0-ce.p.rapidapi.com",
-    },
-  };
-
-  try {
-    // Poll for the submission result until it's ready
-    let result: SubmissionResult = { status: { id: 1, description: "Processing" } };
-    
-    while (
-      result.status?.id === 1 || // In Queue
-      result.status?.id === 2    // Processing
-    ) {
-      const response = await fetch(
-        `${JUDGE0_API_URL}/submissions/${token}`,
-        options
-      );
-      result = await response.json();
-      
-      if (result.status?.id !== 1 && result.status?.id !== 2) {
-        break;
-      }
-      
-      // Wait before polling again
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-    }
-    
-    return result;
-  } catch (error) {
-    console.error("Error getting submission result:", error);
-    throw error;
-  }
+  const result = await executeCode({ languageId, sourceCode, stdin });
+  return toLegacyResult(result);
 };

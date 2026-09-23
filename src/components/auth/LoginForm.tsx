@@ -72,7 +72,7 @@ export function LoginForm() {
         >
           <Button
             type="submit"
-            className="auth-form__submit cp-pill cp-lift bg-indigo-600 text-white hover:bg-indigo-700"
+            className="auth-form__submit cp-pill cp-lift cp-accent-bg text-white"
             disabled={submitting}
           >
             {submitting && <Loader2 size={16} className="animate-spin" />}

@@ -29,8 +29,8 @@
   box-shadow: 0 30px 60px -25px hsl(222 30% 60% / 0.25);
   isolation: isolate;
   background:
-    radial-gradient(55% 65% at 20% 22%, hsl(243 75% 88% / 0.65), transparent 62%),
-    radial-gradient(50% 60% at 85% 78%, hsl(260 70% 90% / 0.55), transparent 65%),
+    radial-gradient(55% 65% at 20% 22%, hsl(var(--cp-atmosphere-1) / 0.65), transparent 62%),
+    radial-gradient(50% 60% at 85% 78%, hsl(var(--cp-atmosphere-2) / 0.55), transparent 65%),
     linear-gradient(135deg, hsl(220 35% 98%), hsl(240 28% 96%) 55%, hsl(243 32% 95%) 100%);
 }
 
@@ -38,14 +38,51 @@
    Transparent so the shared ambient background above shows through and keeps
    going under the glass panel to its right. */
 .room-stage__laptop {
+  position: relative;
   flex: 1 1 50%;
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 1rem;
 }
+/* Environmental grounding — a static, non-animated blurred wash behind the
+   laptop so it reads as sitting IN the room rather than floating over the
+   viewport's own ambient gradient. Room-scoped (::before on this wrapper,
+   not a change to any .laptop* class), so Start screen's own LaptopIntro is
+   untouched. */
+.room-stage__laptop::before {
+  content: "";
+  position: absolute;
+  inset: 8% 12%;
+  background: radial-gradient(60% 60% at 50% 58%, hsl(243 70% 72% / 0.3), transparent 72%);
+  filter: blur(32px);
+  z-index: -1;
+  pointer-events: none;
+}
 .room-stage__laptop .laptop-scene {
-  max-width: 20rem;
+  /* A touch larger than before (20rem) so the laptop carries comparable
+     visual weight to the glass form panel beside it, not a small dark
+     rectangle next to a full-size card. */
+  max-width: 21.5rem;
+}
+/* Closed-state body depth — ROOM ONLY. LaptopIntro's closed laptop is a
+   short bottom-anchored slab (.laptop__shell; see LaptopIntro.css for why
+   it exists at all). On the Start screen that reads correctly, because the
+   viewer has just watched the lid fold down onto it. Entering the room it
+   arrives cold with no such context, and at its Start-screen thickness it
+   read as a bare dark strip rather than a closed laptop — which is what
+   made the travelling laptop look like a placeholder. A little more real
+   thickness plus a top highlight is enough to read as a physical body.
+   Applied to BOTH states (not `:not(.laptop--open)`) on purpose: scoping it
+   to the closed state would snap the height the instant `.laptop--open`
+   lands, mid-fade. The open state's shell is opacity 0 anyway, so height is
+   moot there. Deliberately NO drop shadow: .laptop__base already casts one
+   continuously underneath, and a second copy fading in on top of it was a
+   real, previously-diagnosed shadow pop at the close handoff. */
+.room-stage__laptop .laptop__shell {
+  height: 1.85rem;
+  border-radius: 0.55rem;
+  box-shadow: inset 0 1px 0 hsl(0 0% 100% / 0.14);
 }
 /* The room panel's laptop runs smaller than the start screen's — tighten the
    screen content so the compile/run output never clips against the display.
@@ -157,7 +194,7 @@
   cursor: pointer;
 }
 .room-form__link:hover {
-  color: hsl(243 75% 45%);
+  color: hsl(var(--cp-accent-deep));
 }
 .room-form__link:focus-visible {
   outline: 2px solid hsl(var(--cp-accent));

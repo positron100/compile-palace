@@ -13,6 +13,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useReducedMotion } from '@/hooks/use-reduced-motion';
 import { useStageTransitionNavigate } from '@/hooks/use-stage-transition-navigate';
 import { startStageTransition, supportsViewTransitions } from '@/lib/stageTransition';
+import { BrandLogo } from '@/components/BrandLogo';
 
 const Index = () => {
   const navigate = useStageTransitionNavigate();
@@ -149,8 +150,11 @@ const Index = () => {
           <LaptopIntro />
 
           <div className="text-center">
-            <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Compile Palace</h1>
-            <p className="text-gray-600 mt-2">A collaborative coding environment — spin up a room and ship together.</p>
+            <h1 className="text-2xl sm:text-3xl font-bold text-foreground flex items-center justify-center gap-2">
+              <BrandLogo size={32} className="rounded-md" />
+              Compile Palace
+            </h1>
+            <p className="text-muted-foreground mt-2">A collaborative coding environment — spin up a room and ship together.</p>
           </div>
 
           <Button
@@ -173,7 +177,7 @@ const Index = () => {
             }}
             aria-label="Sign in or sign up"
             title="Sign in or sign up"
-            className="cp-pill cp-lift h-16 w-16 p-0 bg-indigo-600 text-white hover:bg-indigo-700"
+            className="cp-pill cp-lift cp-accent-bg h-16 w-16 p-0 text-white"
             size="lg"
           >
             <ArrowRight size={22} />

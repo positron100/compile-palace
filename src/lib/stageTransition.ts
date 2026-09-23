@@ -212,3 +212,95 @@ export async function startStageTransition(
       if (activeAnimation === animation) activeAnimation = null;
     });
 }
+
+// ---------------------------------------------------------------------------
+// Editor-content reveal (Saved Code -> Open) — reuses the exact same rect
+// geometry/timing (buildRectFrames/RECT_DURATION_MS/RECT_EASING) Room ->
+// Editor already uses, but scoped to a single element via a named
+// view-transition-name instead of the page root, so the animation is
+// confined to that element's own box (no full-page overlay, Room Info panel
+// untouched) and never runs a route navigation. `view-transition-name` is
+// only added to the target right before the transition and removed right
+// after (mirroring how startStageTransition sets/clears its own
+// `data-stage-transition` attribute) so this never interferes with the
+// separate root-level Room -> Editor transition, which names a completely
+// different element (`root`) at a completely different time.
+// ---------------------------------------------------------------------------
+const EDITOR_REVEAL_NAME = "cp-editor-reveal";
+const EDITOR_REVEAL_CLASS = "cp-editor-reveal-target";
+
+function prefersReducedMotion(): boolean {
+  return typeof window !== "undefined" && !!window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+}
+
+/**
+ * Wraps `applyChange` (e.g. loading saved code into the editor) in the same
+ * circle... no — same RECT reveal Room -> Editor uses, confined to `target`
+ * (the editor surface element). Falls back to an immediate, unanimated
+ * `applyChange()` when View Transitions aren't supported or the user has
+ * reduced motion enabled.
+ */
+export async function startEditorRevealTransition(
+  target: HTMLElement,
+  applyChange: () => void,
+): Promise<void> {
+  if (!supportsViewTransitions() || prefersReducedMotion()) {
+    applyChange();
+    return;
+  }
+
+  target.classList.add(EDITOR_REVEAL_CLASS);
+
+  const doc = document as unknown as { startViewTransition: StartViewTransition };
+  let transition: ViewTransitionLike;
+  try {
+    transition = doc.startViewTransition(() => {
+      flushSync(applyChange);
+    });
+  } catch {
+    applyChange();
+    target.classList.remove(EDITOR_REVEAL_CLASS);
+    return;
+  }
+
+  transition.finished.finally(() => {
+    target.classList.remove(EDITOR_REVEAL_CLASS);
+  });
+
+  try {
+    await transition.ready;
+  } catch {
+    return;
+  }
+
+  const frames = buildRectFrames(); // same private geometry Room -> Editor uses, unmodified
+  document.documentElement.animate(frames, {
+    duration: RECT_DURATION_MS,
+    easing: RECT_EASING,
+    pseudoElement: `::view-transition-new(${EDITOR_REVEAL_NAME})`,
+    fill: "both",
+  });
+
+  // Old/new CODE CONTENT crossfade — the view-transition snapshots ARE
+  // bitmaps of the actual editor content (old code vs new code), so
+  // animating their opacity literally crossfades old code -> new code, not
+  // just the container. Two separate, parallel Animation objects (opacity
+  // only) layered on top of the same unmodified clip-path reveal above —
+  // Web Animations lets multiple `.animate()` calls target the same
+  // pseudo-element concurrently as long as they don't touch the same CSS
+  // property, so this never touches or redefines the approved geometry.
+  // Was previously relying on the reveal's own hard clip-path edge to hide
+  // the old snapshot, which only fully covered it at the very last instant
+  // — reads as an abrupt pop when the transition tears the snapshots down.
+  // An explicit, synchronized opacity ramp (old 1->0, new 0->1, same
+  // duration/easing as the geometry) guarantees old is already fully
+  // invisible before that teardown, so there's nothing left to "disappear".
+  document.documentElement.animate(
+    [{ opacity: 1 }, { opacity: 0 }],
+    { duration: RECT_DURATION_MS, easing: RECT_EASING, pseudoElement: `::view-transition-old(${EDITOR_REVEAL_NAME})`, fill: "both" }
+  );
+  document.documentElement.animate(
+    [{ opacity: 0 }, { opacity: 1 }],
+    { duration: RECT_DURATION_MS, easing: RECT_EASING, pseudoElement: `::view-transition-new(${EDITOR_REVEAL_NAME})`, fill: "both" }
+  );
+}
