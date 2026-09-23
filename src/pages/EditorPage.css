@@ -184,15 +184,26 @@
   color: hsl(var(--cp-accent));
 }
 
-/* --- Top bar --- */
+/* --- Top bar ---
+   Section 9/10: was flush against the viewport edges with a flat
+   border-bottom — every other Compile Palace surface (editor-surface,
+   output, room panel) is instead an INSET floating glass card: 0.75rem
+   margin from its container, 0.75rem radius, the material's own border +
+   shadow doing the separation instead of a divider line. Same numbers here
+   (0.75rem is the one inset constant every other panel already uses — see
+   .editor-sidebar-normal/.editor-surface/.editor-output). No margin-bottom:
+   .editor-main's own children already offset themselves 0.75rem from ITS
+   top edge, so leaving that at 0 here still produces one consistent
+   0.75rem gap below the bar, not a doubled-up one. */
 .editor-topbar {
   flex-shrink: 0;
   display: flex;
   align-items: center;
   gap: 0.75rem;
-  min-height: 3.5rem;
+  min-height: 3.25rem;
+  margin: 0.75rem 0.75rem 0;
   padding: 0.5rem 1rem;
-  border-bottom: 1px solid var(--glass-subtle-border);
+  border-radius: 0.75rem;
   z-index: 30;
 }
 .editor-topbar__brand {
@@ -201,13 +212,23 @@
   color: hsl(var(--cp-accent));
   white-space: nowrap;
 }
+/* Section 10 — logical groups (language context / status+room chips /
+   action icons / Run) via nested flex rows with their own gap, plus a
+   slightly larger gap BETWEEN groups than within one — reads as organized
+   without adding a visible divider line, which nothing else in this app
+   uses either. */
 .editor-topbar__right {
   margin-left: auto;
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: 1rem;
   flex-wrap: wrap;
   justify-content: flex-end;
+}
+.editor-topbar__group {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
 }
 .editor-chip {
   display: inline-flex;
@@ -367,19 +388,20 @@
   opacity: 0;
   pointer-events: none;
   transition: transform 260ms var(--cp-ease-standard), opacity 200ms var(--cp-ease-standard);
-  /* Same glass recipe as `.editor-lang__panel` (declared directly, not via
-     the shared `.glass-primary` utility class) — both floating surfaces
-     read as one material system, and there's no equal-specificity property
-     fight across stylesheets left to accidentally paint a dark/opaque
-     border (that WAS happening here: `.glass-primary` from index.css and
-     this rule's own `border`/`box-shadow` were both setting the same
-     properties with no guaranteed winner between the two files). */
-  background-color: var(--glass-primary-bg);
-  background-image: linear-gradient(180deg, hsl(var(--cp-accent) / 0.08), transparent 40%), var(--glass-primary-sheen);
-  backdrop-filter: blur(var(--glass-blur)) saturate(1.4);
-  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(1.4);
-  border: 1px solid var(--glass-primary-border);
-  box-shadow: 0 24px 48px -20px hsl(230 60% 10% / 0.35), 0 4px 12px -6px hsl(230 60% 10% / 0.2);
+  /* Live test: typed real code into the editor and compared what's legible
+     THROUGH each panel, not just the declared CSS numbers. Result: the lang
+     dropdown reads code text almost crisp (alpha-blended, effectively
+     near-zero visible blur) while this panel at 10.8px smeared the same
+     text into unreadable mush — a real blur-strength mismatch the earlier
+     "matching --glass-secondary" pass missed because it only compared
+     computed style values, not actual rendered legibility. Dropped blur to
+     2px (verified live: reproduces the dropdown's crisp-text look) to
+     genuinely match, not just declare a matching number. */
+  background-color: hsl(0 0% 100% / 0.38);
+  backdrop-filter: blur(2px) saturate(1.3);
+  -webkit-backdrop-filter: blur(2px) saturate(1.3);
+  border: 1px solid var(--glass-secondary-border);
+  box-shadow: var(--glass-secondary-shadow), inset 0 1px 0 hsl(0 0% 100% / 0.18);
 }
 .editor-panel[data-open="true"] {
   transform: translateX(0) scale(1);
@@ -405,7 +427,23 @@
   flex-shrink: 0;
   flex-direction: column;
   width: 17rem;
-  border-right: 1px solid var(--glass-secondary-border);
+  /* Was `border-right` only + flush against the top/left/bottom viewport
+     edges and the editor — read as a structural page column even though it
+     already carried `.glass-secondary`'s own border/shadow/blur. The editor
+     surface and output panel get their "separate physical surface" feel
+     from being INSET (0.75rem margin from their container, same number
+     `.editor-workspace` uses as its own padding) with rounded corners, not
+     from the glass material alone. Adding the same margin + radius here —
+     material was already correct, framing wasn't. */
+  /* No right margin: .editor-surface positions itself `left: 0.75rem` from
+     .editor-workspace's own edge (that's the real source of editor/output's
+     gap numbers, not .editor-workspace's padding — padding is inert for
+     absolutely-positioned children, which is all that container has). Adding
+     a right margin here on top of that would double the gap to ~1.25rem
+     instead of matching the 0.75rem used everywhere else. */
+  margin: 0.75rem 0 0.75rem 0.75rem;
+  border-radius: 0.75rem;
+  border: 1px solid var(--glass-secondary-border);
   transition: width 200ms ease;
   overflow: hidden;
   z-index: 5;
@@ -419,12 +457,73 @@
   }
 }
 
+/* Bug fix — Room Info content must not participate in the panel's own
+   opening/closing geometry transition (transform/opacity on .editor-panel /
+   width on .editor-sidebar-normal). This wrapper is the ONLY thing that
+   fades/settles, on its own delayed timeline, so the panel visibly "opens"
+   first and the content visibly "settles into it" after, instead of both
+   animating at once and reading as a fight. Closing reverts immediately
+   (no delay) so content is gone before/as the panel collapses, never
+   lingering. Not applied to the mobile Sheet (`showControls=false` renders
+   `.contents` instead) — that already has its own Radix slide-in and needs
+   no second animation layered on top. */
+.editor-sidebar__content {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  opacity: 0;
+  transform: translateY(6px);
+  transition: opacity 220ms var(--cp-ease-standard), transform 220ms var(--cp-ease-standard);
+}
+.editor-panel[data-open="true"] .editor-sidebar__content {
+  opacity: 1;
+  transform: translateY(0);
+  transition-delay: 180ms;
+}
+/* Normal/docked mode: EditorPage.tsx's aside ternary only mounts this content
+   when sidebarOpen flips true (RailIcons renders in its place otherwise), so
+   the element is freshly inserted already matching the selector below — a
+   `transition` never plays on that first paint, since there's no prior
+   committed style to interpolate from (confirmed live: computed opacity was
+   already 1 within one frame of open, well before the intended 180ms delay).
+   An `animation` always runs its keyframes on mount regardless of insertion
+   timing, so normal mode uses that instead; floating mode's panel node stays
+   mounted continuously (only `data-open` toggles), so its transition above
+   already has something to interpolate from and works correctly as-is. */
+@keyframes editor-sidebar-content-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.editor-sidebar-normal:not([data-collapsed="true"]) .editor-sidebar__content {
+  animation: editor-sidebar-content-in 220ms var(--cp-ease-standard) 180ms both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .editor-sidebar__content,
+  .editor-sidebar-normal:not([data-collapsed="true"]) .editor-sidebar__content {
+    transition: none;
+    animation: none;
+    opacity: 1;
+    transform: none;
+  }
+}
+
 .editor-sidebar__section {
   padding: 0.75rem 1rem;
   border-bottom: 1px solid var(--glass-subtle-border);
 }
 .editor-sidebar__section:last-child {
   border-bottom: none;
+}
+/* Section 9 — a real section heading (not the small uppercase eyebrow
+   labels below it), but still compact: doesn't push the room ID/status row
+   down meaningfully. Same typography scale editor-topbar__brand and other
+   Compile Palace section titles already use. */
+.editor-sidebar__heading {
+  font-size: 0.9375rem;
+  font-weight: 700;
+  margin-bottom: 0.5rem;
+  opacity: 0.9;
 }
 .editor-sidebar__label {
   font-size: 0.6875rem;
@@ -457,6 +556,360 @@
   opacity: 0.75;
 }
 
+/* --- Saved Code / History (compact — never grows into a file browser) --- */
+.editor-sidebar__section--history {
+  flex-shrink: 0;
+  max-height: 12rem;
+  display: flex;
+  flex-direction: column;
+  /* max-height alone doesn't clip static-flow content — without this,
+     overflow just renders past the box instead of being scrollable. */
+  overflow: hidden;
+}
+/* Wraps list + scroll-down arrow so the arrow can sit pinned at the
+   region's own bottom edge regardless of scroll position. flex:1 + min-
+   height:0 is what actually lets .editor-history__list below shrink to
+   "remaining space after the header row" instead of growing to fit all
+   its content — that bounded height is what makes overflow-y:auto on the
+   list do anything at all. */
+.editor-history__scroll-region {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+}
+.editor-history__list {
+  height: 100%;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  /* Native scrollbar hidden (section 1A) — the down-arrow control below is
+     the discoverable affordance instead; wheel/trackpad/keyboard scrolling
+     all still work exactly as before, only the chrome is gone. */
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.editor-history__list::-webkit-scrollbar {
+  display: none;
+}
+/* Delete/create collapse — real layout height motion via the CSS grid-rows
+   trick (1fr <-> 0fr), not a fixed max-height guess: `1fr` on a single-row
+   grid always resolves to the row's actual intrinsic content height, so this
+   animates from whatever the item's real rendered height is (any name
+   length/wrap) down to (or up from) zero, and the ResizeObserver already
+   watching .editor-history__list (below) fires continuously as the grid
+   track itself changes size — remaining items reflow as a direct consequence
+   of that, not a separate "close the gap" step. `.editor-history__row` owns
+   ONLY this layout transition; `.editor-history__item` inside it is where
+   the (untouched) liquid-glass hover transform lives, so the two never
+   fight over the `transform` property (section 6). Exit and entrance share
+   the same transition (duration/easing/opacity curve) so they read as exact
+   counterparts (section 5); SavedCodeHistory.tsx drives which state via
+   `data-anim`, holding the item mounted for the full duration before
+   removing it from the array (exit) or flipping it to "idle" one frame after
+   mount (entrance), so the browser always has a real "from" state to animate
+   out of. */
+.editor-history__row {
+  display: grid;
+  grid-template-rows: 1fr;
+  opacity: 1;
+  /* Both properties share one duration/easing now (was 260ms/220ms) — a
+     mismatched pair meant the fade finished before the height did, so the
+     last ~40ms of every collapse/expand was a bare layout shift with
+     nothing masking it, which is exactly what read as a little rough/
+     unfinished. Slightly longer (320ms) to match the rest of the app's own
+     "material" transitions (.editor-panel/.editor-output), not a snappier
+     UI-control-press timing — this is a physical stack of cards settling,
+     not a button click. */
+  transition: grid-template-rows 320ms var(--cp-ease-standard), opacity 320ms var(--cp-ease-standard);
+}
+.editor-history__row[data-anim="entering"],
+.editor-history__row[data-anim="exiting"] {
+  grid-template-rows: 0fr;
+  opacity: 0;
+}
+.editor-history__row-inner {
+  min-height: 0;
+  overflow: hidden;
+}
+.editor-history__item {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  /* Was also animating `transform: scaleY(0.85)` here on top of the row's
+     own grid-rows collapse — two independent systems squashing the SAME
+     element's height at once (the grid track shrinking the available box,
+     a separate 15% squish inside it) reads as a flinch/jank right at the
+     start/end rather than one continuous collapse. The row's grid-rows
+     transition already IS the real height motion; this element now only
+     fades its own content opacity in step with it, so there's exactly one
+     thing moving, not two fighting for the same effect. */
+  opacity: 1;
+  transition: opacity 320ms var(--cp-ease-standard);
+}
+.editor-history__row[data-anim="entering"] .editor-history__item,
+.editor-history__row[data-anim="exiting"] .editor-history__item {
+  opacity: 0;
+}
+@media (prefers-reduced-motion: reduce) {
+  .editor-history__row,
+  .editor-history__item {
+    transition-duration: 0.01ms !important;
+  }
+}
+/* Section 1 — inline Confirm/Cancel replacing the ⋯ menu trigger area in
+   place; same pill dimensions so nothing shifts. */
+.editor-history__confirm {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  flex-shrink: 0;
+  animation: editor-history-confirm-in 160ms var(--cp-ease-standard) both;
+}
+@keyframes editor-history-confirm-in {
+  from { opacity: 0; transform: scale(0.9); }
+  to { opacity: 1; transform: scale(1); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .editor-history__confirm { animation: none; }
+}
+.editor-history__confirm-btn {
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: 9999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.editor-history__confirm-btn--danger {
+  color: rgb(220 38 38);
+}
+@media (hover: hover) and (pointer: fine) {
+  .editor-history__confirm-btn--danger:hover {
+    background-color: rgb(220 38 38 / 0.12) !important;
+    border-color: rgb(220 38 38 / 0.3) !important;
+  }
+}
+.editor-history__item-main {
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  gap: 0.0625rem;
+  padding: 0.375rem 0.5rem;
+  border-radius: 0.5rem;
+}
+.editor-history__item-name {
+  font-size: 0.8125rem;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.editor-history__item-meta {
+  font-size: 0.6875rem;
+  opacity: 0.55;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.editor-history__item-menu {
+  flex-shrink: 0;
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: 9999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0.6;
+}
+.editor-history__item-menu:hover {
+  opacity: 1;
+}
+/* Small circular glass control (section 1A) — subtle fade/slide, never an
+   abrupt show/hide, and pointer-events off while hidden so it can't steal
+   clicks/focus from the item underneath it when not visible. */
+.editor-history__scroll-arrow {
+  position: absolute;
+  bottom: 0.125rem;
+  left: 50%;
+  translate: -50% 0;
+  width: 1.5rem;
+  height: 1.5rem;
+  border-radius: 9999px;
+  background-color: var(--glass-subtle-bg);
+  border: 1px solid var(--glass-subtle-border);
+  box-shadow: 0 4px 10px -6px hsl(230 60% 10% / 0.25);
+  opacity: 0;
+  transform: translateY(4px);
+  pointer-events: none;
+  transition: opacity 200ms var(--cp-ease-standard), transform 200ms var(--cp-ease-standard);
+}
+.editor-history__scroll-arrow[data-visible="true"] {
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
+}
+@media (prefers-reduced-motion: reduce) {
+  .editor-history__scroll-arrow {
+    transition-duration: 0.01ms !important;
+  }
+}
+.editor-history__retry {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  padding: 0.25rem 0.625rem;
+  border-radius: 9999px;
+  background: var(--glass-subtle-bg);
+  border: 1px solid var(--glass-subtle-border);
+}
+
+/* --- Save/Rename glass dialog + delete confirm — overrides shadcn's
+   generic Dialog/AlertDialog className only (shared ui/ primitives stay
+   untouched), same pattern the mobile Sheet already uses for its glass
+   look. --- */
+.cp-glass-dialog {
+  /* Higher alpha than --glass-primary-bg's usual 0.6 — that token assumes a
+     light page behind it (editor/room panels), but this dialog's own
+     DialogOverlay sibling is `bg-black/80`; blurring that through a 0.6-alpha
+     white reads as muddy gray instead of light glass. More opaque white
+     keeps the frosted look independent of what's behind it. */
+  background-color: hsl(0 0% 100% / 0.9) !important;
+  background-image: linear-gradient(180deg, hsl(var(--cp-accent) / 0.08), transparent 40%), var(--glass-primary-sheen) !important;
+  backdrop-filter: blur(var(--glass-blur)) saturate(1.4);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(1.4);
+  border: 1px solid var(--glass-primary-border) !important;
+  box-shadow: 0 24px 48px -20px hsl(230 60% 10% / 0.35), 0 4px 12px -6px hsl(230 60% 10% / 0.2) !important;
+  border-radius: 1rem !important;
+}
+.cp-glass-dialog--menu {
+  padding: 0.375rem !important;
+  min-width: 9rem;
+}
+.cp-glass-dialog__input {
+  height: var(--cp-field-h);
+  border-radius: var(--cp-field-radius);
+  padding: 0 var(--cp-field-pad-x);
+  background-color: var(--glass-subtle-bg);
+  border: 1px solid var(--glass-subtle-border);
+  font-size: 0.875rem;
+  outline: none;
+}
+.cp-glass-dialog__input:focus {
+  border-color: hsl(var(--cp-accent) / 0.5);
+}
+.cp-glass-dialog__input[aria-invalid="true"] {
+  border-color: rgb(220 38 38 / 0.6);
+}
+.cp-glass-dialog__error {
+  font-size: 0.75rem;
+  color: rgb(220 38 38);
+  margin: 0;
+}
+
+/* --- Inline Save form (top bar) — replaces the Save-name modal (section
+   4/5). Same structural idea as .editor-lang (trigger + absolutely-
+   positioned surface, click-outside/Escape to close) and the exact same
+   --glass-primary recipe .editor-lang__panel uses, just expanding the
+   trigger horizontally in place instead of dropping a panel below it. --- */
+.editor-inline-save {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+.editor-inline-save__form {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  height: 2rem;
+  padding: 0 0.375rem 0 0.625rem;
+  border-radius: 9999px;
+  width: 12rem;
+  background-color: var(--glass-primary-bg);
+  background-image: linear-gradient(180deg, hsl(var(--cp-accent) / 0.08), transparent 40%), var(--glass-primary-sheen);
+  backdrop-filter: blur(var(--glass-blur)) saturate(1.4);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(1.4);
+  border: 1px solid var(--glass-primary-border);
+  box-shadow: 0 12px 28px -16px hsl(230 60% 10% / 0.3);
+  animation: editor-inline-save-expand 220ms var(--cp-ease-standard) both;
+}
+@keyframes editor-inline-save-expand {
+  from { width: 2rem; opacity: 0.4; }
+  to { width: 12rem; opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .editor-inline-save__form { animation: none; }
+}
+.editor-inline-save__icon {
+  opacity: 0.6;
+  flex-shrink: 0;
+}
+.editor-inline-save__input {
+  flex: 1;
+  min-width: 0;
+  background: transparent;
+  border: none;
+  outline: none;
+  font-size: 0.8125rem;
+  color: inherit;
+}
+.editor-inline-save__input::placeholder {
+  color: inherit;
+  opacity: 0.5;
+}
+.editor-inline-save__confirm {
+  width: 1.5rem;
+  height: 1.5rem;
+  border-radius: 9999px;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: hsl(var(--cp-accent));
+}
+.editor-inline-save__confirm:disabled {
+  opacity: 0.4;
+}
+.editor-inline-save__error {
+  position: absolute;
+  top: calc(100% + 0.375rem);
+  right: 0;
+  font-size: 0.6875rem;
+  color: rgb(220 38 38);
+  background-color: var(--glass-subtle-bg);
+  border: 1px solid var(--glass-subtle-border);
+  padding: 0.25rem 0.625rem;
+  border-radius: 0.5rem;
+  white-space: nowrap;
+  z-index: 41;
+}
+.cp-glass-dialog__btn {
+  height: 2.25rem;
+  padding: 0 1rem;
+  border-radius: 9999px;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  background-color: var(--glass-subtle-bg);
+  border: 1px solid var(--glass-subtle-border);
+}
+.cp-glass-dialog__btn--primary {
+  background-color: hsl(var(--cp-accent));
+  color: white;
+  border-color: transparent;
+}
+.cp-glass-dialog__btn--primary:disabled {
+  opacity: 0.5;
+}
+/* !important: AlertDialogAction (ui/alert-dialog.tsx) always applies
+   shadcn's own buttonVariants() bg-primary alongside this className — same
+   conflict .cp-glass-dialog itself already overrides with !important. */
+.cp-glass-dialog__btn--danger {
+  background-color: rgb(220 38 38) !important;
+  color: white !important;
+  border-color: transparent !important;
+}
+
 .editor-room-id {
   display: flex;
   align-items: center;
@@ -472,11 +925,17 @@
   white-space: nowrap;
 }
 
-.editor-roster__row {
+/* Section 2D: names removed from beside avatars, so participants now sit
+   in a compact wrapping row instead of one-per-line — reclaims the
+   horizontal space names used to occupy, stays responsive (wraps) at any
+   panel width. */
+.editor-roster {
   display: flex;
-  align-items: center;
-  gap: 0.625rem;
+  flex-wrap: wrap;
+  gap: 0.5rem;
   padding: 0.375rem 0;
+}
+.editor-roster > * {
   animation: editor-roster-in 220ms ease both;
 }
 @keyframes editor-roster-in {
@@ -484,7 +943,39 @@
   to { opacity: 1; transform: translateY(0); }
 }
 @media (prefers-reduced-motion: reduce) {
-  .editor-roster__row { animation: none; }
+  .editor-roster > * { animation: none; }
+}
+
+/* Section 6/7/8 — squircle avatar, deliberately quiet at rest: this used to
+   permanently imitate the glass material (gradient fill, inset highlight,
+   its own ::before catch-light) regardless of interaction, which read as
+   overdone next to controls where that look only ever appears on hover.
+   Now it's `.cp-liquid` (Client.tsx) like every other interactive control —
+   this class only adds the squircle radius + idle tint on top, and does NOT
+   define its own `::before` (that pseudo-element belongs to `.cp-liquid`'s
+   cursor-tracked sheen now; a second ::before here would just overwrite it,
+   which is exactly the "two glass systems on one element" bug section 8
+   asked to avoid). `.cp-liquid`'s own hover rule (top of file) supplies the
+   actual liquid-glass look — fill, sheen, lift, shadow — so it only ever
+   shows up during interaction, never at rest. */
+.editor-avatar {
+  position: relative;
+  /* !important: ui/avatar.tsx's own `rounded-full` Tailwind utility is baked
+     into both Avatar/AvatarFallback's className (cn() only appends this
+     class, never removes that one) — confirmed live, `rounded-full` was
+     winning at equal specificity and the avatar stayed a circle without
+     this. A plain percentage (not a fixed rem) so it reads as a squircle at
+     any size this class is used at. */
+  border-radius: 26% !important;
+  background-color: hsl(var(--cp-accent) / 0.1);
+  border: 1px solid hsl(var(--cp-accent) / 0.2);
+  cursor: default;
+  backdrop-filter: none;
+}
+.editor-avatar__fallback {
+  position: relative;
+  z-index: 1;
+  color: hsl(var(--cp-accent));
 }
 
 .editor-sidebar__actions {
@@ -558,8 +1049,14 @@
 .editor-workspace[data-output-layout="right"][data-output-expanded="false"] {
   --output-dim: 4.75rem;
 }
+/* Was a flat 30vh — felt short next to the available editor viewport for
+   actually reading compiler output. clamp() targets ~38vh of typical editor
+   height while keeping usable floors/ceilings: never below 280px (a short
+   laptop window), never above 520px (so it can't eat the whole editor on a
+   tall desktop display). Right-dock's own dimension (next rule) is
+   untouched — this is bottom-orientation only. */
 .editor-workspace[data-output-layout="bottom"][data-output-expanded="true"] {
-  --output-dim: 30vh;
+  --output-dim: clamp(280px, 38vh, 520px);
 }
 .editor-workspace[data-output-layout="right"][data-output-expanded="true"] {
   --output-dim: min(420px, max(280px, 32vw));
@@ -583,24 +1080,33 @@
   bottom: calc(0.75rem + var(--output-dim) + 0.5rem);
   border-radius: 0.75rem;
   overflow: hidden;
-  border: 1px solid hsl(255 40% 62% / 0.32);
-  box-shadow: 0 20px 40px -28px hsl(255 50% 15% / 0.5), inset 0 1px 0 hsl(0 0% 100% / 0.08);
-  background: hsl(252 30% 19%); /* opaque fallback, avoids a flash of white before CodeMirror mounts */
+  /* Border/shadow/background now literally reuse .glass-secondary's own
+     tokens (the same class the output panel is built from) instead of
+     separately hand-tuned values — user asked for the same transparency
+     AND whiteness as the output window, not just a matching alpha number. */
+  border: 1px solid var(--glass-secondary-border);
+  box-shadow: var(--glass-secondary-shadow), inset 0 1px 0 hsl(0 0% 100% / 0.18);
+  background: var(--glass-secondary-bg);
+  /* Missing until now — CodeMirror used to carry its own blur, and when
+     that was removed (single-glass-layer fix) this element was left with
+     no backdrop-filter of its own at all, so it wasn't actually frosting
+     anything. Same value .glass-secondary itself uses. */
+  backdrop-filter: blur(calc(var(--glass-blur) * 0.6)) saturate(1.3);
+  -webkit-backdrop-filter: blur(calc(var(--glass-blur) * 0.6)) saturate(1.3);
   transition: top 320ms var(--cp-ease-standard), right 320ms var(--cp-ease-standard),
     bottom 320ms var(--cp-ease-standard), left 320ms var(--cp-ease-standard);
 }
 .editor-surface__gradient {
   position: absolute;
   inset: 0;
-  /* Lightened from the previous near-black recipe (section 6): raised
-     lightness on every stop (~+10-12%) and kept saturation moderate so it
-     reads as tinted glass, not a neon wash. Text contrast checked against
-     dracula's near-white foreground — still comfortably >10:1 at these
-     lightness values, just visibly lighter than before. */
-  background:
-    radial-gradient(60% 55% at 15% 0%, hsl(258 55% 46% / 0.48), transparent 62%),
-    radial-gradient(55% 60% at 100% 100%, hsl(268 50% 42% / 0.4), transparent 65%),
-    linear-gradient(165deg, hsl(250 32% 22%), hsl(255 30% 18%));
+  /* Was a tinted indigo gradient layered over .editor-surface — the output
+     panel has no equivalent second layer, just flat .glass-secondary, so
+     that tint was the actual reason the editor read less white/transparent
+     than output even with matching base alpha. Emptied out so .editor-surface's
+     own background (now literally var(--glass-secondary-bg)) is the only
+     thing visible, matching output exactly. Element kept (not removed from
+     the DOM/TSX) since it's still referenced there; just inert now. */
+  background: none;
 }
 
 /* The actual root cause of "editor stops mid-viewport": CodeMirror's own
@@ -616,18 +1122,68 @@
   font-size: 0.9375rem;
   line-height: 1.65;
   padding-top: 0.625rem;
-  /* The glass material itself: a mostly-opaque dark purple so text stays
-     crisp, with just enough translucency (14%) for the cubes/gradient
-     behind it to show through faintly. backdrop-filter blurs THAT backdrop
-     only — CodeMirror's own text/cursor/gutter render on top of this
-     background, completely unaffected by the blur (section 18). */
-  background: hsl(252 28% 22% / 0.82) !important;
-  backdrop-filter: blur(14px) saturate(1.3);
-  -webkit-backdrop-filter: blur(14px) saturate(1.3);
-}
-.editor-surface .CodeMirror-gutters {
+  /* Was its own separate translucent+blurred background stacked ON TOP of
+     .editor-surface's glass layer — CodeMirror fills .editor-surface
+     edge-to-edge, so that was two 50%-alpha blurred layers compounding
+     (~0.75 effective opacity, double blur), which is exactly why the editor
+     still looked more opaque/less frosted than output despite both using
+     the same .glass-secondary numbers: output only ever has ONE glass
+     layer (.glass-secondary on .editor-output itself; the inner content div
+     has no background of its own), text sits directly on it. Made
+     transparent here so .editor-surface's single glass-secondary layer
+     underneath is the only one doing the frosting, same as output. */
   background: transparent !important;
-  border-right: 1px solid hsl(255 30% 65% / 0.2) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+/* Section 5 — CodeMirror's own `.CodeMirror-gutters` is already
+   `position: absolute; left: 0; z-index: 3` (codemirror.css), i.e.
+   structurally fixed and already painting ABOVE the scrolling code —
+   horizontal scroll never moves it. The "code overlaps line numbers" bug was
+   never a positioning bug: this rule's own `background: transparent` made
+   the already-on-top gutter see-through, so horizontally-scrolled code was
+   visually legible underneath it even though it was never actually behind
+   it structurally.
+   Two things were tried and rejected before this: (1) a flat opaque
+   `--card` blocked the bleed completely but read as a plain white slab,
+   breaking continuity with the rest of the glass editor; (2) the actual
+   translucent `--glass-secondary-bg` + blur (the material `.editor-surface`
+   itself uses) looked right at rest, but 0.5 alpha is BY DEFINITION still
+   partially see-through — under horizontal scroll the bug came right back,
+   just dimmer. Opacity and "looks like the rest of the glass UI" were
+   fighting each other on the same property; solved by splitting them onto
+   two layers instead of one compromise value: `background` is fully OPAQUE
+   `--card` (zero bleed-through at any scroll position, satisfies the actual
+   bug), and `background-image` layers the SAME accent-tinted sheen gradient
+   `.editor-lang__panel`/inline-save use on top of it — that gradient is what
+   reads as "this belongs to the glass system" (every other glass surface in
+   this app has it), not the alpha, so the gutter matches the app's visual
+   language again without reopening the bleed-through hole.
+   A 3rd attempt tried matching `.editor-surface`'s own blur+alpha (~0.94)
+   for visual consistency — REJECTED after actually verifying it with a real
+   mouse-wheel scroll (not `CodeMirror.scrollTo()`, which was quietly
+   masking this the whole time — its own internal redraw path repaints
+   differently than a genuine scroll event and made every earlier check
+   here a false negative). A real wheel-scroll with bright syntax-highlighted
+   text showed the scrolled characters clearly bleeding through at 0.94
+   alpha — even 6% see-through is enough once the text is saturated and the
+   scroll covers many characters. Any alpha < 1 reopens this bug; opacity
+   and "matches the glass surface" are NOT reconcilable on this element, so
+   opacity wins (it's the actual reported bug) and only the color/tint is
+   allowed to carry the "belongs to the glass system" look, same as the
+   accent-tint-on-opaque-base approach two attempts up — no backdrop-filter
+   here at all, since blurring what's behind an alpha:1 layer has no visible
+   effect anyway and only implies (wrongly) that alpha isn't 1. */
+.editor-surface .CodeMirror-gutters {
+  background-color: hsl(243 45% 98%) !important;
+  background-image: linear-gradient(180deg, hsl(var(--cp-accent) / 0.05), transparent 55%) !important;
+  border-right: 1px solid hsl(255 30% 50% / 0.12) !important;
+}
+.dark .editor-surface .CodeMirror-gutters {
+  background-color: hsl(243 35% 10%) !important;
+}
+.dark .editor-surface .CodeMirror-gutters {
+  background-color: hsl(230 35% 14% / 0.94) !important;
 }
 .editor-surface .CodeMirror-linenumber {
   padding: 0 0.875rem 0 0.625rem;
@@ -639,6 +1195,64 @@
    not a bright IDE-style band, so it reads as a hint rather than a callout. */
 .editor-surface .CodeMirror-activeline-background {
   background: hsl(260 50% 80% / 0.06) !important;
+}
+
+/* --- Custom overlay scrollbars ---
+   `.CodeMirror-overlayscroll-vertical/-horizontal` (useEditorSetup.ts:
+   `scrollbarStyle: "overlay"`) are CodeMirror's own built-in overlay-
+   scrollbar DOM nodes — real scrollTop/scrollLeft, real wheel/keyboard/
+   drag, nothing reimplemented here. Only the paint is Compile Palace's:
+   thin translucent indigo pill, invisible track, brightens on thumb hover/
+   drag and while `cp-cm-scrolling` is set (useEditorSetup's scroll-event
+   listener), fades back afterward. Track (`-vertical`/`-horizontal`
+   themselves) is left with NO background at all — same "no visible track
+   when idle" CodeMirror's own default CSS already does; only the thumb
+   (the `div` child) gets a color. */
+.editor-surface .CodeMirror-overlayscroll-vertical,
+.editor-surface .CodeMirror-overlayscroll-horizontal {
+  z-index: 6;
+  transition: opacity 200ms var(--cp-ease-standard);
+}
+.editor-surface .CodeMirror-overlayscroll-vertical {
+  width: 6px;
+  right: 2px;
+}
+.editor-surface .CodeMirror-overlayscroll-horizontal {
+  height: 6px;
+  bottom: 2px;
+}
+.editor-surface .CodeMirror-overlayscroll-vertical > div,
+.editor-surface .CodeMirror-overlayscroll-horizontal > div {
+  background-color: hsl(var(--cp-accent) / 0.28);
+  border-radius: 9999px;
+  transition: background-color 160ms var(--cp-ease-standard), opacity 200ms var(--cp-ease-standard);
+  opacity: 0.55;
+}
+/* IDLE state (section 7): thumbs sit at low opacity, not fully invisible —
+   still discoverable at a glance without demanding attention. */
+.editor-surface .CodeMirror-overlayscroll-vertical:hover > div,
+.editor-surface .CodeMirror-overlayscroll-horizontal:hover > div,
+.editor-surface .cp-cm-scrolling .CodeMirror-overlayscroll-vertical > div,
+.editor-surface .cp-cm-scrolling .CodeMirror-overlayscroll-horizontal > div {
+  background-color: hsl(var(--cp-accent) / 0.45);
+  opacity: 0.85;
+}
+/* THUMB DRAG — CodeMirror's own Bar class adds no drag-state class, but the
+   thumb stays under the mouse (`mousedown` on `.inner`) for the whole drag,
+   so `:active` on the thumb itself covers the entire drag gesture. Stronger
+   contrast than hover per section 7 ("clearly see what is being dragged"). */
+.editor-surface .CodeMirror-overlayscroll-vertical > div:active,
+.editor-surface .CodeMirror-overlayscroll-horizontal > div:active {
+  background-color: hsl(var(--cp-accent) / 0.65);
+  opacity: 1;
+}
+@media (prefers-reduced-motion: reduce) {
+  .editor-surface .CodeMirror-overlayscroll-vertical,
+  .editor-surface .CodeMirror-overlayscroll-horizontal,
+  .editor-surface .CodeMirror-overlayscroll-vertical > div,
+  .editor-surface .CodeMirror-overlayscroll-horizontal > div {
+    transition-duration: 0.01ms !important;
+  }
 }
 
 /* --- Run button success morph: after a completed run, briefly confirm with
@@ -670,40 +1284,59 @@
   opacity: 1;
   transform: translateY(0);
 }
+/* Was a single scrolling container with the header `position: sticky`
+   inside it — sticky only PINS position, it doesn't paint anything behind
+   itself, and the header's own `background: transparent` + `backdrop-filter:
+   inherit` (which actually resolved to `none`: the real glass blur lives on
+   the outer `.editor-output`, not this element, so `inherit` picked up
+   nothing) meant scrolled content was genuinely visible right through the
+   header. Real fix: header and body are no longer siblings inside one
+   scroll region — `.editor-output__inner` is now the flex column, the
+   header is a true non-scrolling sibling above the scrollable body, so
+   there is nothing to paint over or blur through in the first place. */
 .editor-output__inner {
   height: 100%;
-  overflow-y: auto;
-  /* Scrollable (long output still reachable) when expanded, but no visible
-     scrollbar — the drawer is a small glass panel, not a page. */
-  scrollbar-width: none; /* Firefox */
-  -ms-overflow-style: none; /* legacy Edge */
-}
-.editor-output__inner::-webkit-scrollbar {
-  display: none; /* Chrome/Safari */
-}
-/* Collapsed: the full (much taller) expanded content is still physically
-   present underneath the compact status header, and `overflow-y: auto`
-   above was only ever hiding the SCROLLBAR CHROME, not scrollability
-   itself — wheel/trackpad/touch could still scroll it, just with nothing
-   visible to reveal that. `overflow: hidden` genuinely removes this as a
-   scroll container while collapsed; expanding restores the rule above. */
-.editor-output[data-expanded="false"] .editor-output__inner {
-  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
 }
 .editor-output__header {
-  position: sticky;
-  top: 0;
+  flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 0.5rem;
   padding: 0.625rem 1rem;
   border-bottom: 1px solid var(--glass-subtle-border);
-  backdrop-filter: inherit;
   cursor: pointer;
   background: transparent;
   width: 100%;
   text-align: left;
+}
+.editor-output__body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  /* Scrollable (long output still reachable) when expanded, but no visible
+     scrollbar — the drawer is a small glass panel, not a page. */
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* legacy Edge */
+}
+.editor-output__body::-webkit-scrollbar {
+  display: none; /* Chrome/Safari */
+}
+/* Collapsed: the body is still physically present at full content height
+   underneath the compact status header, and `overflow-y: auto` above was
+   only ever hiding the SCROLLBAR CHROME, not scrollability itself —
+   wheel/trackpad/touch could still scroll it, just with nothing visible to
+   reveal that. `overflow: hidden` genuinely removes this as a scroll
+   container while collapsed; expanding restores the rule above. Also,
+   collapsed's own fixed `--output-dim` (2.75rem/4.75rem) already squeezes
+   `flex: 1` on this element to near-zero, so there is no meaningful body
+   height for this to even matter beyond removing the wheel-scroll capability
+   itself. */
+.editor-output[data-expanded="false"] .editor-output__body {
+  overflow: hidden;
 }
 .editor-output__chevron {
   transition: transform 200ms var(--cp-ease-standard);
@@ -727,6 +1360,20 @@
   font-size: 0.75rem;
   opacity: 0.65;
   border-top: 1px solid var(--glass-subtle-border);
+}
+/* Vendor label as a small liquid-glass pill — `.glass-subtle` supplies the
+   actual frosted material/border/blur (same one editor-chip badges use);
+   this just scales its geometry down to footer size (2rem chips would be
+   oversized in a 0.75rem-font meta row). */
+.editor-output__vendor-pill {
+  display: inline-flex;
+  align-items: center;
+  height: 1.75rem;
+  padding: 0 0.8125rem;
+  border-radius: 9999px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  white-space: nowrap;
 }
 
 /* --- Execution state (Part 2) ---
@@ -827,8 +1474,53 @@
 .editor-output__status[data-exec-state="error"] .editor-output__status-primary {
   color: rgb(220 38 38);
 }
+.editor-output__status[data-exec-state="compile_error"] .editor-output__status-primary {
+  color: rgb(180 83 9);
+}
 .editor-output__status[data-exec-state="running"] .editor-output__status-primary {
   opacity: 0.8;
+}
+
+/* --- Expanded header's own compact status pill (section 1) ---
+   Small icon+word next to the "Output" heading once a run has resolved —
+   same restrained "color lives only on this small pair" rule as the
+   collapsed status above, not a full-bleed badge. */
+.editor-output__header-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 0.125rem 0.5rem;
+  border-radius: 9999px;
+  background: hsl(230 20% 50% / 0.08);
+}
+.editor-output__header-status[data-exec-state="success"] {
+  color: rgb(22 163 74);
+  background: rgb(22 163 74 / 0.1);
+}
+.editor-output__header-status[data-exec-state="error"] {
+  color: rgb(220 38 38);
+  background: rgb(220 38 38 / 0.1);
+}
+.editor-output__header-status[data-exec-state="compile_error"] {
+  color: rgb(180 83 9);
+  background: rgb(180 83 9 / 0.1);
+}
+
+/* --- Execution metadata row (section 9's non-shrinking tier between
+   header and the scrollable body) — language/time/memory, small and muted
+   so the actual output stays the visual focus (section 11). */
+.editor-output__meta-row {
+  flex-shrink: 0;
+  padding: 0.375rem 1rem;
+  font-size: 0.6875rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  opacity: 0.6;
+  border-bottom: 1px solid var(--glass-subtle-border);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .editor-output__status-meta {
   font-size: 0.6875rem;
