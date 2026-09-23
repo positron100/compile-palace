@@ -47,7 +47,12 @@ interface ThemeContextValue {
   /** origin: viewport point the circular reveal grows from (e.g. the click
    *  on the theme-selector trigger). Omit for viewport centre. */
   setTheme: (theme: ThemeName, origin?: RevealOrigin) => void;
-  setMode: (mode: ModeName) => void;
+  /** origin: the mode-toggle button's center. Light->Dark grows the dark
+   *  layer outward from it; Dark->Light shrinks the dark layer back into it
+   *  (same "forward"/"reverse" circle stageTransition.ts already has, just a
+   *  second call site) — reads as one reversible action, not two separate
+   *  expand animations. Omit for viewport centre / instant fallback. */
+  setMode: (mode: ModeName, origin?: RevealOrigin) => void;
 }
 
 const ThemeContext = createContext<ThemeContextValue | null>(null);
@@ -93,14 +98,30 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     [theme, reduceMotion],
   );
 
-  const setMode = useCallback((next: ModeName) => {
-    setModeState(next);
-    try {
-      window.localStorage.setItem(MODE_STORAGE_KEY, next);
-    } catch {
-      /* storage unavailable — mode still applies for this session */
-    }
-  }, []);
+  const setMode = useCallback(
+    (next: ModeName, origin?: RevealOrigin) => {
+      if (next === mode) return;
+      const applyChange = () => {
+        setModeState(next);
+        try {
+          window.localStorage.setItem(MODE_STORAGE_KEY, next);
+        } catch {
+          /* storage unavailable — mode still applies for this session */
+        }
+      };
+      if (reduceMotion) {
+        applyChange();
+        return;
+      }
+      // Same circle primitive as theme switching, second call site: entering
+      // dark grows the dark layer from the toggle ("forward"); entering light
+      // shrinks that same dark layer back into the toggle ("reverse", i.e.
+      // ::view-transition-old(root) — the OUTGOING dark snapshot contracts,
+      // not a fresh light circle expanding) — one reversible action.
+      void startStageTransition("circle", next === "dark" ? "forward" : "reverse", origin ?? null, applyChange);
+    },
+    [mode, reduceMotion],
+  );
 
   const value = useMemo(() => ({ theme, mode, setTheme, setMode }), [theme, mode, setTheme, setMode]);
 

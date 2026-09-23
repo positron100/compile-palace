@@ -3,6 +3,7 @@ import { X, Terminal, ChevronUp, CheckCircle2, XCircle, Loader2, AlertTriangle, 
 import OutputSection from './OutputSection';
 import { useLiquidGlass } from '@/hooks/use-liquid-glass';
 import { ModernTooltip } from './ModernTooltip';
+import { WavLoader } from './WavLoader';
 
 interface OutputDrawerProps {
   open: boolean;
@@ -270,7 +271,7 @@ const OutputDrawer: React.FC<OutputDrawerProps> = ({
           <div key={executionState} className="editor-output__body-fade px-4">
             {executionState === 'running' ? (
               <div className="editor-output__running">
-                <Loader2 size={22} className="animate-spin opacity-70" />
+                <WavLoader size={56} />
                 <p>Running your code…</p>
               </div>
             ) : (

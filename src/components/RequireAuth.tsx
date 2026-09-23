@@ -13,13 +13,16 @@ export function RequireAuth({ children }: { children: ReactNode }) {
   const location = useLocation();
 
   // Don't redirect before Supabase has restored (or ruled out) a session.
-  // Same for an intentional sign-out in progress: `user` flips to null on
-  // Supabase's own async schedule, and this guard can't tell that apart
-  // from "never was logged in" — without this check it redirects to /auth
-  // for a frame before the sign-out handler's own navigate (to Start) wins
-  // the race, flashing the login screen. Deferring here lets the sign-out
-  // handler's intended destination land first.
-  if (loading || signingOut) return null;
+  if (loading) return null;
+
+  // An intentional sign-out in progress: `user` flips to null on Supabase's
+  // own async schedule, and this guard can't tell that apart from "never
+  // was logged in" — without this check it redirects to /auth for a frame
+  // before the sign-out handler's own navigate (to Start) wins the race,
+  // flashing the login screen. Keep rendering the protected page itself
+  // (not `null`) so the sign-out handler's circular transition still has
+  // real content to capture as its "before" frame instead of a blank one.
+  if (signingOut) return <>{children}</>;
 
   if (!user) {
     return <Navigate to="/auth" replace state={{ from: location }} />;

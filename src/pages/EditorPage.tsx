@@ -144,9 +144,13 @@ function EditorPage() {
     setShowOutput(true);
 
     try {
+      // Live buffer, not the mirrored ref — codeRef only updates via the
+      // change-event chain, which has gaps (setValue-origin filtering,
+      // effect re-attach churn). Run must compile what's actually on screen.
+      const liveCode = editorHandleRef.current?.getValue() ?? codeRef.current;
       const result = await submitCode(
         language.id,
-        codeRef.current,
+        liveCode,
         stdin
       );
       setOutputDetails(result);
@@ -796,8 +800,12 @@ function EditorPage() {
     );
   }
 
-  // Redirect to auth if not authenticated
-  if (!user) {
+  // Redirect to auth if not authenticated. Skipped during an intentional
+  // sign-out (see AuthContext's `signingOut`) — `user` flips null on
+  // Supabase's own async schedule before handleSignOut's own navigate to
+  // Start fires, and this render-path guard isn't covered by RequireAuth's
+  // matching check, so without this it flashes the login screen mid sign-out.
+  if (!user && !signingOut) {
     return <Navigate to="/auth" />;
   }
 

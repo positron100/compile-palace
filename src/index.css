@@ -560,6 +560,40 @@
 }
 
 /* ---------------------------------------------------------------------------
+   Toast (components/ui/toast.tsx) — default variant used shadcn's plain
+   `bg-background` (an opaque solid card, no blur/border-tint), the one UI
+   surface in the app that never joined the frosted-glass/liquid-glass
+   material system. Most visible in Dark mode, where --background is a flat
+   near-black and reads as a plain slab next to every other themed dark-glass
+   surface. Reuses --glass-secondary-* (same material as output panel/
+   tooltip/language dropdown) instead of a new token set; `.destructive`
+   variant is excluded so its semantic red stays solid, not glassed. Motion:
+   same restrained enter/settle timing as the Room-Info content-settle
+   pattern, replacing tailwindcss-animate's default slide/fade duration —
+   still driven by radix's own `data-state`, no new animation engine. */
+.cp-toast:not(.destructive) {
+  background-color: var(--glass-secondary-bg) !important;
+  border-color: var(--glass-secondary-border) !important;
+  box-shadow: var(--glass-secondary-shadow) !important;
+  backdrop-filter: blur(calc(var(--glass-blur) * 0.6)) saturate(1.3);
+  -webkit-backdrop-filter: blur(calc(var(--glass-blur) * 0.6)) saturate(1.3);
+}
+.cp-toast[data-state="open"] {
+  animation-duration: 260ms !important;
+  animation-timing-function: var(--cp-ease-standard, cubic-bezier(0.16, 1, 0.3, 1)) !important;
+}
+.cp-toast[data-state="closed"] {
+  animation-duration: 200ms !important;
+  animation-timing-function: var(--cp-ease-standard, cubic-bezier(0.16, 1, 0.3, 1)) !important;
+}
+@media (prefers-reduced-motion: reduce) {
+  .cp-toast[data-state] {
+    animation: none !important;
+    transition: opacity 120ms ease !important;
+  }
+}
+
+/* ---------------------------------------------------------------------------
    Modern tooltip (components/ModernTooltip.tsx) — replaces native `title`
    tooltips on icon-only controls app-wide with something that matches the
    frosted-glass/pill language instead of the browser's default box. Reuses

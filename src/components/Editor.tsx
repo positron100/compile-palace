@@ -19,6 +19,7 @@ interface EditorProps {
 export interface EditorHandle {
   formatCode: () => void;
   loadCode: (code: string) => void;
+  getValue: () => string;
 }
 
 const Editor = memo(forwardRef<EditorHandle, EditorProps>(({
@@ -117,7 +118,11 @@ const Editor = memo(forwardRef<EditorHandle, EditorProps>(({
       codeRef.current = code;
       initializedRef.current = true;
       handleCodeChange(code);
-    }
+    },
+    // Run must always compile what's actually in the buffer right now, not
+    // a mirrored ref that's only as fresh as the last change-event that
+    // happened to fire — read CodeMirror directly.
+    getValue: () => editorRef.current?.getValue() ?? codeRef.current
   }), [editorRef, handleCodeChange]);
 
   return <textarea id="realtimeEditor" ref={textareaRef}></textarea>;

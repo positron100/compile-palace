@@ -36,7 +36,7 @@ function extractLocation(text?: string): { file: string; line: string; col?: str
 
 function LocationChip({ loc }: { loc: { file: string; line: string; col?: string } }) {
   return (
-    <div className="inline-flex items-center gap-1 mb-2 px-2 py-0.5 rounded-md bg-white/60 border border-slate-200 text-xs font-mono text-slate-600">
+    <div className="inline-flex items-center gap-1 mb-2 px-2 py-0.5 rounded-md bg-white/60 dark:bg-white/5 border border-slate-200 dark:border-white/10 text-xs font-mono text-slate-600 dark:text-slate-300">
       <span className="truncate max-w-[10rem]">{loc.file}</span>
       <span className="opacity-50">:</span>
       <span>{loc.line}</span>
@@ -54,7 +54,7 @@ const OutputSection: React.FC<OutputSectionProps> = ({ outputDetails, stdin }) =
   if (!outputDetails) {
     return (
       <div className="output-section py-5">
-        <div className="min-h-[200px] flex flex-col items-center justify-center text-slate-400 p-5">
+        <div className="min-h-[200px] flex flex-col items-center justify-center text-slate-400 dark:text-slate-500 p-5">
           <Terminal size={40} className="opacity-30 mb-3" />
           <p className="text-center">
             Run your code to see output results here
@@ -71,16 +71,16 @@ const OutputSection: React.FC<OutputSectionProps> = ({ outputDetails, stdin }) =
     <div className="output-section py-4 space-y-5">
       {/* Program Output — always shown, exactly as received, never altered. */}
       <div className="output-item">
-        <div className="flex items-center gap-1.5 mb-2 text-sm font-medium text-slate-700">
+        <div className="flex items-center gap-1.5 mb-2 text-sm font-medium text-slate-700 dark:text-slate-200">
           <Terminal size={15} className="opacity-80" />
           Program Output
         </div>
         {outputDetails.stdout ? (
-          <pre className="p-3 bg-slate-50 rounded-lg border border-slate-200 text-sm text-slate-800 font-mono whitespace-pre-wrap">
+          <pre className="p-3 bg-slate-50 dark:bg-white/5 rounded-lg border border-slate-200 dark:border-white/10 text-sm text-slate-800 dark:text-slate-100 font-mono whitespace-pre-wrap">
             {outputDetails.stdout}
           </pre>
         ) : (
-          <div className="p-5 bg-slate-50 rounded-lg border border-slate-200 text-slate-400 text-sm flex items-center justify-center italic">
+          <div className="p-5 bg-slate-50 dark:bg-white/5 rounded-lg border border-slate-200 dark:border-white/10 text-slate-400 dark:text-slate-500 text-sm flex items-center justify-center italic">
             No output generated
           </div>
         )}
@@ -91,12 +91,12 @@ const OutputSection: React.FC<OutputSectionProps> = ({ outputDetails, stdin }) =
           kind of information (build-time, not run-time). */}
       {outputDetails.compile_output && (
         <div className="output-item">
-          <div className="flex items-center gap-1.5 mb-2 text-sm font-medium text-amber-700">
+          <div className="flex items-center gap-1.5 mb-2 text-sm font-medium text-amber-700 dark:text-amber-400">
             <AlertTriangle size={15} className="opacity-80" />
             Compilation Error
           </div>
           {compileLoc && <LocationChip loc={compileLoc} />}
-          <pre className="p-3 bg-amber-50 rounded-lg border border-amber-100 text-sm text-amber-800 font-mono whitespace-pre-wrap">
+          <pre className="p-3 bg-amber-50 dark:bg-amber-500/10 rounded-lg border border-amber-100 dark:border-amber-500/20 text-sm text-amber-800 dark:text-amber-200 font-mono whitespace-pre-wrap">
             {outputDetails.compile_output}
           </pre>
         </div>
@@ -106,12 +106,12 @@ const OutputSection: React.FC<OutputSectionProps> = ({ outputDetails, stdin }) =
           here, never manufactured. */}
       {outputDetails.stderr && (
         <div className="output-item">
-          <div className="flex items-center gap-1.5 mb-2 text-sm font-medium text-red-600">
+          <div className="flex items-center gap-1.5 mb-2 text-sm font-medium text-red-600 dark:text-red-400">
             <AlertCircle size={15} className="opacity-80" />
             stderr
           </div>
           {stderrLoc && <LocationChip loc={stderrLoc} />}
-          <pre className="p-3 bg-red-50 rounded-lg border border-red-100 text-sm text-red-800 font-mono whitespace-pre-wrap">
+          <pre className="p-3 bg-red-50 dark:bg-red-500/10 rounded-lg border border-red-100 dark:border-red-500/20 text-sm text-red-800 dark:text-red-200 font-mono whitespace-pre-wrap">
             {outputDetails.stderr}
           </pre>
         </div>
@@ -123,11 +123,11 @@ const OutputSection: React.FC<OutputSectionProps> = ({ outputDetails, stdin }) =
           rather than showing an empty/fake input box. */}
       {stdin && stdin.trim() && (
         <details className="output-item group">
-          <summary className="flex items-center gap-1.5 mb-2 text-sm font-medium text-slate-700 cursor-pointer select-none list-none">
+          <summary className="flex items-center gap-1.5 mb-2 text-sm font-medium text-slate-700 dark:text-slate-200 cursor-pointer select-none list-none">
             <ChevronRight size={15} className="opacity-70 transition-transform group-open:rotate-90" />
             Input
           </summary>
-          <pre className="p-3 bg-slate-50 rounded-lg border border-slate-200 text-sm text-slate-800 font-mono whitespace-pre-wrap">
+          <pre className="p-3 bg-slate-50 dark:bg-white/5 rounded-lg border border-slate-200 dark:border-white/10 text-sm text-slate-800 dark:text-slate-100 font-mono whitespace-pre-wrap">
             {stdin}
           </pre>
         </details>

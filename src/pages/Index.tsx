@@ -201,7 +201,7 @@ const Index = () => {
         </div>
 
         <footer className="absolute bottom-4 text-center w-full text-sm text-gray-600 z-10">
-          Built with ❤️ by Macrohard
+          Built with ❤️ by Mukul
         </footer>
       </div>
     );
@@ -247,7 +247,7 @@ const Index = () => {
       </div>
 
       <footer className="absolute bottom-4 text-center w-full text-sm text-gray-600 z-10">
-        Built with ❤️ by Macrohard
+        Built with ❤️ by Mukul
       </footer>
     </div>
   );

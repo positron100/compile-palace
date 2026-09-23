@@ -9,6 +9,7 @@ import { AuthProvider } from "@/context/AuthContext";
 import { ThemeProvider } from "@/context/ThemeContext";
 import { RoomLaptopProvider } from "@/context/RoomLaptopContext";
 import { RequireAuth } from "@/components/RequireAuth";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 import Index from "./pages/Index";
 import NotFound from "./pages/NotFound";
 import EditorPage from "./pages/EditorPage";
@@ -44,7 +45,9 @@ const App = () => (
         <BrowserRouter>
           <AuthProvider>
             <RoomLaptopProvider>
-              <AppRoutes />
+              <ErrorBoundary>
+                <AppRoutes />
+              </ErrorBoundary>
             </RoomLaptopProvider>
           </AuthProvider>
         </BrowserRouter>

@@ -1317,10 +1317,8 @@
   border-right: 1px solid hsl(255 30% 50% / 0.12) !important;
 }
 .dark .editor-surface .CodeMirror-gutters {
-  background-color: hsl(243 35% 10%) !important;
-}
-.dark .editor-surface .CodeMirror-gutters {
-  background-color: hsl(230 35% 14% / 0.94) !important;
+  background-color: var(--glass-secondary-bg) !important;
+  background-image: none !important;
 }
 .editor-surface .CodeMirror-linenumber {
   padding: 0 0.875rem 0 0.625rem;
@@ -1332,6 +1330,68 @@
    not a bright IDE-style band, so it reads as a hint rather than a callout. */
 .editor-surface .CodeMirror-activeline-background {
   background: hsl(260 50% 80% / 0.06) !important;
+}
+
+/* Dark-mode editor syntax palette — root cause of "code hard to read in
+   Dark mode": CodeMirror's "neat" theme (useEditorSetup.ts) is a single
+   fixed set of colors (theme/neat.css) with no dark variant; base text/
+   cursor/selection come from CodeMirror's own light-mode default CSS too.
+   Every value below is additive, scoped under `.dark`, and only overrides
+   colors (`!important` matches the specificity CodeMirror's own stylesheets
+   already need) — light mode is completely untouched. Cool-white primary
+   text, muted-but-legible comments, theme accent on keywords so syntax still
+   feels native to the selected theme, warm/cool split between strings and
+   numbers for differentiation. */
+.dark .editor-surface .CodeMirror {
+  color: hsl(230 20% 92%) !important;
+}
+.dark .editor-surface .cm-s-neat span.cm-keyword {
+  color: hsl(var(--cp-accent) / 1) !important;
+  filter: brightness(1.25);
+}
+.dark .editor-surface .cm-s-neat span.cm-variable,
+.dark .editor-surface .cm-s-neat span.cm-property {
+  color: hsl(230 20% 92%) !important;
+}
+.dark .editor-surface .cm-s-neat span.cm-def {
+  color: hsl(200 85% 72%) !important;
+}
+.dark .editor-surface .cm-s-neat span.cm-string {
+  color: hsl(95 45% 68%) !important;
+}
+.dark .editor-surface .cm-s-neat span.cm-number,
+.dark .editor-surface .cm-s-neat span.cm-atom {
+  color: hsl(29 80% 70%) !important;
+}
+.dark .editor-surface .cm-s-neat span.cm-comment {
+  color: hsl(225 12% 55%) !important;
+}
+.dark .editor-surface .cm-s-neat span.cm-builtin,
+.dark .editor-surface .cm-s-neat span.cm-special {
+  color: hsl(190 60% 68%) !important;
+}
+.dark .editor-surface .cm-s-neat span.cm-meta,
+.dark .editor-surface .cm-s-neat span.cm-link {
+  color: hsl(225 12% 65%) !important;
+}
+.dark .editor-surface .cm-s-neat .CodeMirror-matchingbracket {
+  outline: 1px solid hsl(230 20% 60%) !important;
+  color: hsl(230 20% 96%) !important;
+}
+.dark .editor-surface .cm-s-neat .CodeMirror-activeline-background {
+  background: hsl(var(--cp-accent) / 0.08) !important;
+}
+.dark .editor-surface .CodeMirror-linenumber {
+  color: hsl(225 12% 50%) !important;
+}
+.dark .editor-surface .CodeMirror-cursor {
+  border-left: 1.5px solid hsl(var(--cp-accent)) !important;
+}
+.dark .editor-surface .CodeMirror-selected {
+  background: hsl(var(--cp-accent) / 0.28) !important;
+}
+.dark .editor-surface .CodeMirror-focused .CodeMirror-selected {
+  background: hsl(var(--cp-accent) / 0.32) !important;
 }
 
 /* --- Custom overlay scrollbars ---
