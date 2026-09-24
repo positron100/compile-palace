@@ -158,8 +158,35 @@ export async function startStageTransition(
   }
   activeTransition = transition;
 
+  // Watchdog: `transition.finished` is a browser-native promise that, per
+  // everything observed empirically working on this feature, doesn't always
+  // settle in bounded time (measured multi-second-plus stalls, and in at
+  // least one environment never at all). Left unguarded, that means
+  // `data-stage-transition` (which disables CSS transitions app-wide via the
+  // `* { transition: none !important }` rule below) and the top-layer view-
+  // transition snapshot both stay stuck indefinitely — the page becomes
+  // uninteractive/confusing until a full reload, which matches exactly what
+  // "sometimes stuck, fixed by opening a new tab" looks like. This forces
+  // the same cleanup `transition.finished.finally` already does, after a
+  // bound generous enough to never fire during a normal-speed transition
+  // (longest real duration used anywhere is RECT_DURATION_MS = 1850ms).
+  const WATCHDOG_MS = 4000;
+  let settled = false;
+  const watchdog = setTimeout(() => {
+    if (settled || activeTransition !== transition) return;
+    try {
+      transition.skipTransition();
+    } catch {
+      /* already settled or unsupported */
+    }
+    clearVars();
+    activeTransition = null;
+  }, WATCHDOG_MS);
+
   let ownAnimation: Animation | null = null;
   transition.finished.finally(() => {
+    settled = true;
+    clearTimeout(watchdog);
     ownAnimation?.cancel();
     if (activeAnimation === ownAnimation) activeAnimation = null;
     if (activeTransition !== transition) return;
@@ -186,7 +213,15 @@ export async function startStageTransition(
     easing = CIRCLE_EASING;
   } else {
     const grow = buildRectFrames();
-    frames = forward ? grow : grow.map((f, i) => ({ ...grow[grow.length - 1 - i], offset: f.offset }));
+    // A true time-reversal needs offsets mirrored too (1 - offset), not just
+    // the value order — grow's offsets aren't evenly spaced (0, .2, .32,
+    // .64, 1), so keeping the original ascending offsets paired with
+    // reversed values crams most of the visual change into the first ~20%
+    // of the duration instead of mirroring forward's actual pacing, which
+    // reads as "reverse plays too fast".
+    frames = forward
+      ? grow
+      : [...grow].reverse().map((f) => ({ ...f, offset: 1 - (f.offset ?? 0) }));
     durationMs = RECT_DURATION_MS;
     easing = RECT_EASING;
   }

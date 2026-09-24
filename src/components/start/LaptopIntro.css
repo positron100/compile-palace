@@ -274,6 +274,10 @@
    short; everything above the hinge/base band should just be empty page,
    not opaque fill. */
 .laptop__shell {
+  /* Seam + rim follow the active theme (--cp-accent varies per theme x mode);
+     alphas drop in dark, where the token is brighter, to stay subtle. */
+  --laptop-seam-a: 0.55;
+  --laptop-rim-a: 0.35;
   position: absolute;
   left: 0;
   right: 0;
@@ -281,13 +285,33 @@
   height: 1.35rem;
   z-index: 2;
   border-radius: 0.5rem;
-  background: linear-gradient(160deg, hsl(230 45% 14%), hsl(233 55% 8%));
+  /* Base fill unchanged; layered on top is a single 1px seam roughly a
+     third of the way down, plus a hairline top highlight. Both exist only
+     to break this element's own flat silhouette into "lid edge / hinge
+     groove / base", since it's the ONLY opaque part of the closed shape
+     (.laptop__screen is transparent while rotated, .laptop__hinge and
+     .laptop__base sit underneath this element's own footprint) — a plain
+     single-tone fill reads as an unrelated bar rather than a closed
+     laptop, which is exactly the "detached rectangle" complaint. Both are
+     within this element's own existing fill/border, not a new node. */
+  background: linear-gradient(
+      180deg,
+      transparent 0%,
+      transparent calc(38% - 1px),
+      hsl(var(--cp-accent) / var(--laptop-seam-a)) calc(38% - 1px),
+      hsl(var(--cp-accent) / var(--laptop-seam-a)) calc(38% + 1px),
+      transparent calc(38% + 1px)
+    ),
+    linear-gradient(160deg, hsl(230 45% 14%), hsl(233 55% 8%));
   border: 1px solid hsl(230 30% 22%);
-  /* No box-shadow of its own — .laptop__base sits directly underneath and
-     already casts this exact shadow continuously (open, mid-close, and
-     closed alike, never hidden). A second copy fading in here on top of
-     that always-present one was a visible shadow pop/doubling right at the
-     handoff. One continuous shadow throughout instead. */
+  /* INSET highlight only (reads as the underside lid edge catching light) —
+     not an outer drop-shadow. .laptop__base still owns the only outer
+     shadow (sits directly underneath, casts it continuously through open/
+     mid-close/closed alike); a second OUTER copy fading in here on top of
+     that always-present one was the "shadow pop/doubling" this comment
+     used to warn against. An inset shadow never extends past this box's
+     own edge, so it can't double anything base draws outside it. */
+  box-shadow: inset 0 1px 0 hsl(var(--cp-accent) / var(--laptop-rim-a));
   opacity: 0;
   pointer-events: none;
   /* Was riding .laptop__screen's own rotation curve (0.34,0,0.1,1) —
@@ -301,6 +325,10 @@
      (400ms) and starting a touch earlier (500ms) so there's more visible
      "soft compression" time before the solid settles. */
   transition: opacity 400ms cubic-bezier(0.45, 0, 0.55, 1) 500ms;
+}
+.dark .laptop__shell {
+  --laptop-seam-a: 0.4;
+  --laptop-rim-a: 0.28;
 }
 .laptop:not(.laptop--open) .laptop__shell {
   opacity: 1;

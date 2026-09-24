@@ -336,7 +336,8 @@
     radial-gradient(120% 90% at 20% 15%, hsl(0 0% 100% / 0.22), transparent 60%),
     radial-gradient(65% 70% at 0% 100%, hsl(152 45% 40% / 0.28), transparent 65%),
     radial-gradient(65% 70% at 100% 0%, hsl(22 80% 55% / 0.28), transparent 65%),
-    linear-gradient(158deg, hsl(0 0% 100% / 0.28), transparent 42%, hsl(243 60% 30% / 0.3));
+    linear-gradient(158deg, hsl(0 0% 100% / 0.28), transparent 42%, hsl(243 60% 30% / 0.3)),
+    var(--cp-curtain-pools);
 }
 /* Root cause of "Auth still reads as Lavender" in Rainbow: `.auth-stage__curtain`'s
    own `background-color: hsl(var(--accent))` (AuthCard.css:126) is SOLID and
@@ -349,9 +350,15 @@
    reads as a hard edge) plus a linear-gradient underneath for full coverage
    between them, giving roughly equal visual weight to all three. Curtain
    geometry/transform/timing/opacity are untouched; only this background swaps. */
+/* The pools live in a custom property consumed by the curtain's ::before (just
+   above), NOT on the curtain's own background-image: a background-image can't
+   cross-fade to `none`, so in Room mode the gradient stayed painted and the
+   curtain never became glass in Rainbow. ::before fades via opacity (the
+   Room rule already does that for the sheen), so the pools now fade with it
+   while background-color transitions to the glass token underneath. */
 [data-theme="rainbow"] .auth-stage__curtain {
   background-color: hsl(190 40% 45%);
-  background-image:
+  --cp-curtain-pools:
     radial-gradient(85% 70% at 15% 20%, hsl(243 75% 59% / 0.95), transparent 60%),
     radial-gradient(85% 70% at 50% 55%, hsl(152 45% 32% / 0.9), transparent 60%),
     radial-gradient(85% 70% at 85% 85%, hsl(22 80% 55% / 0.95), transparent 60%),
@@ -407,7 +414,7 @@
 }
 .dark[data-theme="rainbow"] .auth-stage__curtain {
   background-color: hsl(230 40% 14%);
-  background-image:
+  --cp-curtain-pools:
     radial-gradient(85% 70% at 15% 20%, hsl(243 75% 45% / 0.9), transparent 60%),
     radial-gradient(85% 70% at 50% 55%, hsl(152 50% 22% / 0.85), transparent 60%),
     radial-gradient(85% 70% at 85% 85%, hsl(16 70% 30% / 0.9), transparent 60%),
@@ -453,6 +460,80 @@
   background-color: hsl(22 80% 55% / 0.35) !important;
 }
 
+/* PRE-EDITOR ambient shapes (Start, Login/Signup, Join Room). Same
+   `.squares li` geometry/animation as the Editor's cube field, but their own
+   color tokens — kept separate from the Editor's (inline `--cp-accent`
+   tint + `.editor-cube-field` Rainbow rules above) so neither can change the
+   other. Light values keep Lavender identical to the old hardcoded
+   `bg-indigo-500/20` (239 84% 67% @ 0.2); Dark is deeper (lower lightness +
+   saturation, lower alpha) instead of `--cp-accent`, which dark mode
+   deliberately RAISES for legibility of icons/borders. */
+:root,
+[data-theme="lavender"],
+[data-theme="rainbow"] {
+  --cp-preeditor-cube: 239 84% 67%;
+  --cp-preeditor-cube-opacity: 0.2;
+}
+[data-theme="forest"] {
+  --cp-preeditor-cube: 152 45% 40%;
+  --cp-preeditor-cube-opacity: 0.2;
+}
+[data-theme="sunset"] {
+  --cp-preeditor-cube: 22 80% 58%;
+  --cp-preeditor-cube-opacity: 0.2;
+}
+.dark[data-theme="lavender"],
+.dark[data-theme="rainbow"] {
+  --cp-preeditor-cube: 243 50% 48%;
+  --cp-preeditor-cube-opacity: 0.26;
+}
+.dark[data-theme="forest"] {
+  --cp-preeditor-cube: 152 42% 34%;
+  --cp-preeditor-cube-opacity: 0.26;
+}
+.dark[data-theme="sunset"] {
+  --cp-preeditor-cube: 20 60% 44%;
+  --cp-preeditor-cube-opacity: 0.26;
+}
+.cp-preeditor-cube {
+  background-color: hsl(var(--cp-preeditor-cube) / var(--cp-preeditor-cube-opacity));
+}
+/* Rainbow: stable family by child index (never per-render random) — the same
+   forest / lavender / sunset trio the Editor's Rainbow cubes use, at the
+   same low opacity as every other theme's pre-editor cubes. */
+[data-theme="rainbow"] .cp-preeditor-cube:nth-child(3n+1) {
+  --cp-preeditor-cube: 152 45% 40%;
+}
+[data-theme="rainbow"] .cp-preeditor-cube:nth-child(3n) {
+  --cp-preeditor-cube: 22 80% 58%;
+}
+.dark[data-theme="rainbow"] .cp-preeditor-cube:nth-child(3n+1) {
+  --cp-preeditor-cube: 152 42% 34%;
+}
+.dark[data-theme="rainbow"] .cp-preeditor-cube:nth-child(3n) {
+  --cp-preeditor-cube: 20 60% 44%;
+}
+
+/* Registered so `background-color`/`backdrop-filter` transitions that target
+   these via var() (the Auth curtain's Auth->Room material morph, AuthCard.css)
+   can actually interpolate smoothly. An unregistered custom property's value
+   is a plain text substitution at computed-value time — the browser can't
+   decompose it into an animatable value, so a transition landing on a
+   filter/background-color built from var(--glass-*) either doesn't animate
+   at all or holds its start value for the whole duration instead of morphing.
+   Typing them here (matching every value already used for each) fixes that
+   without changing any of the actual color/blur values themselves. */
+@property --glass-blur {
+  syntax: '<length>';
+  inherits: true;
+  initial-value: 18px;
+}
+@property --glass-primary-bg {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: hsl(0 0% 100% / 0.6);
+}
+
 :root {
   /* Shared control geometry — every pill field/submit across Login, Signup
      and Room Join reads these instead of repeating the numbers per file, so
@@ -489,20 +570,29 @@
      declarations instead (see those files). */
   body,
   .cp-atmosphere,
+  .cp-preeditor-cube,
   .editor-topbar {
     transition: background-color 260ms ease, border-color 260ms ease;
   }
 }
 
+.dark .glass-primary {
+  /* Drop shadow alone can't read dark-on-dark; a brighter inset rim line
+     (vs light mode's 0.25) is the reliable "lifted" cue here. */
+  box-shadow: var(--glass-primary-shadow), inset 0 1px 0 hsl(0 0% 100% / 0.4);
+}
 .dark {
   --glass-primary-bg: hsl(230 35% 14% / 0.55);
   --glass-primary-border: hsl(var(--cp-border-tint) / 0.25);
   --glass-primary-sheen: linear-gradient(160deg, hsl(230 40% 40% / 0.3), transparent 45%);
-  --glass-primary-shadow: 0 30px 60px -30px hsl(230 84% 4% / 0.6);
+  /* Was near-black (230 84% 4%), same luminance as the atmospheric bg it
+     sits on — a dark shadow can't read against an equally dark surface.
+     Lifted to a visible deep navy so the drop shadow actually registers. */
+  --glass-primary-shadow: 0 30px 60px -30px hsl(230 55% 2% / 0.85);
 
   --glass-secondary-bg: hsl(230 35% 14% / 0.45);
   --glass-secondary-border: hsl(var(--cp-border-tint) / 0.2);
-  --glass-secondary-shadow: 0 14px 30px -18px hsl(230 84% 4% / 0.5);
+  --glass-secondary-shadow: 0 14px 30px -18px hsl(230 55% 2% / 0.75);
 
   --glass-subtle-bg: hsl(230 35% 14% / 0.3);
   --glass-subtle-border: hsl(var(--cp-border-tint) / 0.16);

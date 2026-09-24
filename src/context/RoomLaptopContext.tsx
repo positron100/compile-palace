@@ -241,14 +241,29 @@ export function RoomLaptopProvider({ children }: { children: ReactNode }) {
           // already settled. That gap is exactly what read as "the panel
           // arrives, and then separately a laptop shows up".
           //
-          // Only `transform` moves, eased from ENTRY_OFFSET to rest; never
-          // opacity (no "pop"), no scale, no bounce, no overshoot.
+          // `transform` slides it in; `opacity` now rides the SAME duration/
+          // easing alongside it (not a separately-timed "pop" — this isn't
+          // the popping-in this comment used to warn against, it's synced to
+          // the identical curve as the slide). Needed because the pre-`active`
+          // closed shape below (LaptopIntro.css's `.laptop__shell`) is, by
+          // its own design, "a short, wide, bottom-anchored bar" — everything
+          // above the hinge/base band is deliberately empty/transparent, so
+          // that shell is the ONLY opaque thing visible while this wrapper
+          // travels. At full opacity from the first off-canvas frame, that
+          // reads as a solid dark rectangle sliding in from nowhere — no
+          // laptop context yet to read it as "a closed laptop arriving" (the
+          // Start screen has that context because the user just watched the
+          // lid fold down onto this exact shape; Room's entry has none). A
+          // synced 0->1 fade makes it materialize into place with the slide
+          // instead of appearing as a pre-formed, disconnected object.
           <div
             className="laptop-scene"
             aria-hidden="true"
             style={{
               transform: phase === "entering-start" ? `translateX(${ENTRY_OFFSET})` : "none",
-              transition: phase === "entering-start" ? "none" : `transform ${ENTRY_MS}ms ${ENTRY_EASE}`,
+              opacity: phase === "entering-start" ? 0 : 1,
+              transition:
+                phase === "entering-start" ? "none" : `transform ${ENTRY_MS}ms ${ENTRY_EASE}, opacity ${ENTRY_MS}ms ${ENTRY_EASE}`,
             }}
           >
             {phase === "active" ? (

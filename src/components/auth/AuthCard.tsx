@@ -77,6 +77,7 @@ interface AuthCardProps {
  */
 export function AuthCard({ mode, onSwitch, roomStage, roomContent, onRoomRevealed }: AuthCardProps) {
   const rootRef = useRef<HTMLElement>(null);
+  const revealedRef = useRef(false);
   const stage: AuthStage = roomStage?.active ? "room" : mode;
   const isRegister = stage === "register";
 
@@ -92,11 +93,28 @@ export function AuthCard({ mode, onSwitch, roomStage, roomContent, onRoomReveale
     if (stage !== "room" || !onRoomRevealed) return;
     const curtain = rootRef.current?.querySelector<HTMLElement>(".auth-stage__curtain");
     if (!curtain) return;
-    const onEnd = (e: TransitionEvent) => {
-      if (e.propertyName === "transform") onRoomRevealed();
+    // Any single curtain property can have start == end for a given
+    // entry side/theme/mode (transform entering Room from Signup; and
+    // background-color in Dark+Rainbow, where the room-mode rule loses the
+    // cascade tie to `.dark[data-theme="rainbow"] .auth-stage__curtain`) —
+    // a `transitionend` listener keyed on one named property then never
+    // fires and the user is stranded on this decoy at /auth forever. Wait on
+    // whichever transitions the browser actually started instead (reading
+    // getAnimations() flushes style, so they exist by now); none started
+    // (transitions suppressed / everything already at target) means the
+    // reveal is already visually done.
+    let cancelled = false;
+    const running = curtain
+      .getAnimations()
+      .filter((a) => typeof CSSTransition !== "undefined" && a instanceof CSSTransition);
+    void Promise.allSettled(running.map((a) => a.finished)).then(() => {
+      if (cancelled || revealedRef.current) return;
+      revealedRef.current = true;
+      onRoomRevealed();
+    });
+    return () => {
+      cancelled = true;
     };
-    curtain.addEventListener("transitionend", onEnd);
-    return () => curtain.removeEventListener("transitionend", onEnd);
   }, [stage, onRoomRevealed]);
 
   return (

@@ -97,7 +97,7 @@ const Auth = () => {
                 "--i": Math.random() * 10 + 1,
                 "--j": Math.random() * 7 + 1,
               } as React.CSSProperties}
-              className="bg-indigo-500/20 absolute list-none rounded-lg animate-float"
+              className="cp-preeditor-cube absolute list-none rounded-lg animate-float"
             />
           ))}
         </ul>

@@ -124,8 +124,25 @@
   z-index: 3;
   overflow: hidden;
   background-color: hsl(var(--accent));
+  /* Matches the room-mode target's filter FUNCTION LIST (blur + saturate)
+     at zero/neutral values, not `none` (the property's initial value).
+     `backdrop-filter: none -> blur(Xpx) saturate(1.4)` cannot interpolate
+     (mismatched function lists), so it snaps discretely partway through the
+     transition instead of ramping smoothly — for most of --dur-room the
+     curtain stayed visually flat/opaque (no blur at all yet), then the
+     blur suddenly appeared right at the end. That read as "a solid colored
+     bar sits there, then Room suddenly appears" instead of a continuous
+     morph. Same function list on both ends removes the snap. */
+  backdrop-filter: blur(0px) saturate(1);
+  -webkit-backdrop-filter: blur(0px) saturate(1);
   border-radius: var(--bulge-login);
   transform: var(--curtain-login);
+  /* Neutral "no-op" clip matching the element's own full box, not `none` —
+     same reason as the backdrop-filter comment below: `clip-path: none ->
+     inset(...)` can't interpolate (mismatched representations), so it snaps
+     instead of shrinking smoothly. Only ROOM mode ever moves this; login/
+     register never reference it, so it's inert there regardless. */
+  clip-path: inset(0px round 0px);
   transition: transform var(--dur-curtain) var(--ease-curtain), border-radius var(--dur-curtain) var(--ease-curtain),
     background-color 260ms ease;
   will-change: transform;
@@ -160,20 +177,92 @@
    .glass-primary uses, ::before's purple sheen -> opacity 0). It ends up
    *being* the glass surface the room content sits on, not something that
    vanishes to reveal a separate one underneath. */
-.auth-stage[data-mode="room"] .auth-stage__curtain {
+/* `:root` prefix: raises specificity above the Rainbow curtain rules in
+   index.css (`.dark[data-theme="rainbow"] .auth-stage__curtain` ties this
+   selector at 0,3,0 and won on source order, so in Dark+Rainbow the curtain
+   never left its own colour and stayed a slab until the real panel took
+   over). The Rainbow gradient now lives on ::before (fades with opacity), so
+   only background-color needed to win here. */
+:root .auth-stage[data-mode="room"] .auth-stage__curtain {
   transform: var(--curtain-register);
   border-radius: var(--bulge-register);
   background-color: var(--glass-primary-bg);
   backdrop-filter: blur(var(--glass-blur)) saturate(1.4);
   -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(1.4);
+  /* Shrinks the curtain's own VISIBLE footprint down to exactly where
+     .room-stage__form (RoomJoinCard.css) actually sits, so this element
+     doesn't just change color — it becomes that panel, same size/position,
+     not a full-half-viewport slab sitting behind a smaller card.
+
+     The curtain is `width: 100%` of `.auth-stage__viewport` (call that W)
+     and, at rest in room mode, is shifted `translateX(50%)` — i.e. its own
+     LOCAL x=0 lands at page position `viewportLeft + W/2`. Room content
+     (`.auth-stage__room`) is NOT shifted — it shares the viewport's own,
+     untransformed frame. `.room-stage__viewport` is `padding: 1rem;
+     gap: 1rem` with two `flex: 1 1 50%` children (laptop, form), so in that
+     untransformed frame the form's left edge is always at `W/2 + 0.5rem`
+     and its right edge at `W - 1rem`, independent of W (the flex-basis
+     terms cancel algebraically). Converting BOTH into the curtain's own
+     local coordinates (subtract `viewportLeft + W/2`, the curtain's local
+     x=0): left becomes a WIDTH-INDEPENDENT constant, `0.5rem` — the two
+     `W/2` terms cancel — while the right edge becomes `50% + 1rem` measured
+     from the curtain's own right edge (curtain-local W - (W/2 - 1rem)).
+     Verified against real measured rects (form width predicted 424px,
+     measured 424px, exact) — an earlier draft of this rule had left/right
+     swapped (`50% + 0.5rem` as the LEFT inset), which clipped the wrong
+     side and shrank the curtain to nothing useful; this is the corrected,
+     re-derived version. `round` matches .room-stage__form's own radius
+     (`calc(var(--radius) * 2.5)`) exactly, so the clip's corners land on
+     the same radius the (now-transparent, see the .room-stage__form
+     .glass-primary strip below) form panel would have drawn itself — this
+     shape IS that panel by the time it settles. */
   transition: transform var(--dur-room) var(--ease-curtain),
     border-radius var(--dur-room) var(--ease-curtain),
     background-color var(--dur-room) var(--ease-curtain),
-    backdrop-filter var(--dur-room) var(--ease-curtain);
+    backdrop-filter var(--dur-room) var(--ease-curtain),
+    clip-path var(--dur-room) var(--ease-curtain);
+}
+/* Desktop only: the formula assumes a 50/50 split (see the comment at the
+   bottom of the mobile block for why mobile keeps material-only). */
+@media (min-width: 768px) {
+  :root .auth-stage[data-mode="room"] .auth-stage__curtain {
+    clip-path: inset(calc(1rem - 1px) calc(50% + 1rem - 1px) calc(1rem - 1px) 0.5rem round calc(var(--radius) * 2.5));
+  }
 }
 .auth-stage[data-mode="room"] .auth-stage__curtain::before {
   opacity: 0;
   transition: opacity var(--dur-room) var(--ease-curtain);
+}
+/* The rest of what .glass-primary paints on the real .room-stage__form —
+   1px border, sheen, inset top highlight — none of which the curtain's own
+   background-color/backdrop-filter carry. Without it the curtain settles as
+   a border-less, sheen-less tint and the real panel (same footprint) pops in
+   over it at the route swap. Sized to the same inset as the clip-path above
+   (both resolve against the curtain's own box) so its edge IS the clip edge;
+   it fades in on the back half so no ring floats inside the still-shrinking
+   clip mid-sweep. Tokens, not copied literals: theme x mode stay in sync. */
+.auth-stage__curtain::after {
+  content: "";
+  position: absolute;
+  inset: calc(1rem - 1px) calc(50% + 1rem - 1px) calc(1rem - 1px) 0.5rem;
+  border-radius: calc(var(--radius) * 2.5);
+  border: 1px solid var(--glass-primary-border);
+  background-image: var(--glass-primary-sheen);
+  box-shadow: inset 0 1px 0 hsl(0 0% 100% / 0.25);
+  opacity: 0;
+  pointer-events: none;
+}
+.dark .auth-stage__curtain::after {
+  box-shadow: inset 0 1px 0 hsl(0 0% 100% / 0.4);
+}
+.auth-stage[data-mode="room"] .auth-stage__curtain::after {
+  opacity: 1;
+  transition: opacity calc(var(--dur-room) * 0.5) var(--ease-curtain) calc(var(--dur-room) * 0.5);
+}
+@media (max-width: 767px) {
+  .auth-stage__curtain::after {
+    display: none;
+  }
 }
 
 /* --- Welcome copy layer (z4) --- */
@@ -254,7 +343,18 @@
   z-index: 4;
   opacity: 1;
   transform: none;
-  pointer-events: auto;
+  /* NOT auto: this layer only ever hosts Auth.tsx's decoy RoomJoinCard — a
+     visual preview of the sweep's destination, every prop a no-op
+     (onRoomIdChange={()=>{}} etc, real Room ID = ""). AuthCard's own inert
+     effect (`el.inert = dataset.authSide !== stage`) already makes this
+     wrapper not-inert once stage is "room", so with pointer-events left at
+     `auto` its inputs were genuinely focusable/typable — a real user typing
+     here during the curtain sweep sees characters go nowhere, since the
+     controlled value is pinned to "" forever. z-index above already puts it
+     on top visually; pointer-events was never needed for that and is the
+     actual bug. The real, stateful RoomJoinCard Index.tsx renders on "/"
+     once the sweep hands off is unaffected — separate React tree entirely. */
+  pointer-events: none;
   /* Delay must be >= the old form/copy's own fade-out duration above
      (0.34 * --dur-room) or the two crossfade mid-flight: for however long
      the delay is shorter than that, old content is still fading down while
@@ -262,8 +362,73 @@
      alpha-blending into visible double-text — this is what actually reads
      as ghosting to a human eye, even when neither individual opacity value
      is very high. Room only starts once the old layer has fully hit zero. */
-  transition-duration: calc(var(--dur-room) * 0.66);
-  transition-delay: calc(var(--dur-room) * 0.34);
+  /* Full shorthand restated here (not just the two longhands) so this rule's
+     timing doesn't depend on the base .auth-stage__room rule's `transition`
+     shorthand still being in effect for `transition-property`/-timing-function
+     underneath it — self-contained instead of relying on cross-rule cascade
+     ordering between a shorthand and overriding longhands. */
+  transition: transform calc(var(--dur-room) * 0.66) var(--ease-curtain) calc(var(--dur-room) * 0.34),
+    opacity calc(var(--dur-room) * 0.66) var(--ease-curtain) calc(var(--dur-room) * 0.34);
+}
+
+/* RoomJoinCard's own `.room-stage__viewport` (RoomJoinCard.css) paints a
+   full-width ambient wash + box-shadow of its own — correct once it's
+   mounted standalone on the real /room route, but while it's hosted HERE,
+   riding this layer's opacity fade above the curtain (z4 vs the curtain's
+   z3), that wash becomes a second, un-color-matched panel fading in on top
+   of the curtain's own morph. The curtain's background-color/backdrop-filter
+   genuinely animate toward glass underneath, but the viewer never sees that
+   change — they see this opaque wash appear over it instead, which is
+   exactly what reads as "curtain moves, then Room appears" rather than
+   "curtain becomes Room's glass." Stripped only in this hosted context so
+   the curtain's own material is what's visible settling into place; the
+   laptop and form card (which carry their own material/shadow) are
+   unaffected. */
+.auth-stage__room .room-stage__viewport {
+  background: none;
+  box-shadow: none;
+}
+
+/* `.auth-stage__room`'s own fade-in (above) starts at 34% and covers the
+   whole layer, including this form's heading/inputs — so the actual Room
+   copy was becoming legible while the curtain was still mid material/
+   geometry morph, reading as "room content competing with an unfinished
+   curtain" rather than settling into an already-formed surface. Give the
+   content itself a later, independent delay (~78% in) so it only rises
+   once the curtain's clip-path/background-color/backdrop-filter morph
+   (var(--dur-room), same curve) has essentially resolved — the container/
+   laptop side is unaffected, it still establishes on the earlier timeline. */
+.auth-stage__room .room-form {
+  opacity: 0;
+  transform: translateY(6px);
+  transition: opacity calc(var(--dur-room) * 0.22) var(--ease-curtain) calc(var(--dur-room) * 0.78),
+    transform calc(var(--dur-room) * 0.22) var(--ease-curtain) calc(var(--dur-room) * 0.78);
+}
+.auth-stage[data-mode="room"] .auth-stage__room .room-form {
+  opacity: 1;
+  transform: none;
+}
+
+/* .room-stage__form (RoomJoinCard.tsx) carries its own `glass-primary` class
+   — independent background-color/border-color/box-shadow, un-timed, painted
+   at whatever opacity `.auth-stage__room`'s own fade-in currently is. It sits
+   above the curtain (z4 vs z3) and is a different shape (its own border-
+   radius, inset by the flex layout's padding/gap from the curtain's larger
+   bulge) — so as `.auth-stage__room` fades in, this reads as a second,
+   differently-shaped, differently-shadowed rectangle appearing ON TOP of the
+   curtain's own material morph, not the curtain becoming that surface. Same
+   bug class as the `.room-stage__viewport` strip above, one layer deeper.
+   Stripped only in this hosted context — the curtain (already at
+   glass-primary's own background/blur target by the time this is visible)
+   *is* the glass surface; content sits directly on it. Standalone /room
+   route keeps its real glass-primary panel untouched. */
+.auth-stage__room .room-stage__form.glass-primary {
+  background-color: transparent;
+  background-image: none;
+  border-color: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
 }
 
 .auth-stage__wordmark {
@@ -377,6 +542,20 @@
   .auth-stage__cta {
     margin-top: 1rem;
   }
+
+  /* The desktop room-mode clip-path (above) assumes a clean 50/50 split,
+     which matches desktop's translateX(50%) exactly — the visible curtain
+     slice IS literally half its own box. Mobile's translateY(72%) does not
+     produce that same relationship (its resting visible slice is ~28% of
+     the curtain's own height, not 50%, by design — a deliberate overlap/
+     bulge reveal, not a half-split), so the same formula would clip down to
+     a smaller-than-intended remnant here instead of matching
+     .room-stage__form's actual (taller, stacked-layout) footprint. Left
+     as material-morph-only on mobile (background-color/backdrop-filter/
+     border-radius, same as before this change) rather than shipping a
+     geometry fix that doesn't fit this breakpoint's different transform
+     scheme — revisit with mobile's own actual numbers if this matters
+     enough to solve properly. */
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -384,6 +563,7 @@
   .auth-stage__form,
   .auth-stage__curtain,
   .auth-stage__curtain::before,
+  .auth-stage__curtain::after,
   .auth-stage__copy,
   .auth-stage__cta,
   .auth-stage__room {

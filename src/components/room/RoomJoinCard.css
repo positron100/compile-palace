@@ -34,6 +34,22 @@
     linear-gradient(135deg, hsl(220 35% 98%), hsl(240 28% 96%) 55%, hsl(243 32% 95%) 100%);
 }
 
+/* .room-stage__viewport's `overflow: hidden` clips any box-shadow drawn by
+   its child .room-stage__form (the glass panel) entirely — so the "lift"
+   the user actually sees is THIS element's own shadow, not the panel's.
+   The light-mode value above is a single hardcoded hsl() with no dark
+   counterpart, so in dark mode it was rendering that same light-hued,
+   low-opacity shadow against a dark backdrop — visible but reading as
+   nearly nothing. Also darkens the ambient wash so it doesn't look like a
+   leftover light-mode panel peeking through the glass. */
+.dark .room-stage__viewport {
+  box-shadow: 0 30px 60px -25px hsl(230 55% 2% / 0.65);
+  background:
+    radial-gradient(55% 65% at 20% 22%, hsl(var(--cp-atmosphere-1) / 0.35), transparent 62%),
+    radial-gradient(50% 60% at 85% 78%, hsl(var(--cp-atmosphere-2) / 0.3), transparent 65%),
+    linear-gradient(135deg, hsl(230 35% 10%), hsl(235 32% 9%) 55%, hsl(240 30% 8%) 100%);
+}
+
 /* Environment side — physical/solid, not glass: it's the room, not floating UI.
    Transparent so the shared ambient background above shows through and keeps
    going under the glass panel to its right. */

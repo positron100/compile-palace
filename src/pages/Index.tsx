@@ -35,6 +35,17 @@ const Index = () => {
   // of what `user` says — until our own flushSync releases it keeps the
   // "old" snapshot correct, so the circle is what actually reveals Start.
   const [holdRoomView, setHoldRoomView] = useState(false);
+  // `user` only flips null once supabase.auth.signOut() actually completes
+  // (Supabase's own async SIGNED_OUT event) — on a slow or failing logout the
+  // circle would play and then Room Join re-render underneath it. Committing
+  // to Start locally at release time keeps the visual outcome independent of
+  // that round trip; only a genuine sign-out error rolls it back.
+  const [signedOutView, setSignedOutView] = useState(false);
+  const signOutFailedRef = useRef(false);
+
+  useEffect(() => {
+    if (!user) setSignedOutView(false);
+  }, [user]);
 
   useEffect(() => {
     if (!user) {
@@ -85,6 +96,7 @@ const Index = () => {
     // confusing error toast for something that's already the desired state.
     if (signingOutRef.current) return;
     signingOutRef.current = true;
+    signOutFailedRef.current = false;
 
     const r = e.currentTarget.getBoundingClientRect();
     const origin = { x: r.left + r.width / 2, y: r.top + r.height / 2 };
@@ -104,6 +116,7 @@ const Index = () => {
     // that's already switched.
     const release = () => {
       setHoldRoomView(false);
+      if (!signOutFailedRef.current) setSignedOutView(true);
       routerNavigate('/', { replace: true });
     };
     // The circle starts on click, not after the network round trip —
@@ -132,6 +145,9 @@ const Index = () => {
       // success rather than surfacing an error for a state the user already
       // wants.
       if (error && !/auth session missing/i.test(error.message)) {
+        signOutFailedRef.current = true;
+        setHoldRoomView(false);
+        setSignedOutView(false);
         toast.error(error.message);
       }
     });
@@ -143,7 +159,7 @@ const Index = () => {
   // Starting screen: laptop/code intro leading into the auth experience.
   // `holdRoomView` keeps Room Join rendered a beat past `user` going null so
   // the sign-out circle (handleSignOut above) is what visibly reveals this.
-  if (!user && !holdRoomView) {
+  if ((!user && !holdRoomView) || signedOutView) {
     return (
       <div className="min-h-screen flex items-center justify-center cp-atmosphere relative overflow-hidden px-6 sm:px-8 py-10">
         <div className="relative z-10 flex flex-col items-center gap-8 w-full max-w-md">
@@ -194,7 +210,7 @@ const Index = () => {
                   "--i": Math.random() * 10 + 1,
                   "--j": Math.random() * 7 + 1,
                 } as React.CSSProperties}
-                className="bg-indigo-500/20 absolute list-none rounded-lg animate-float"
+                className="cp-preeditor-cube absolute list-none rounded-lg animate-float"
               />
             ))}
           </ul>
@@ -240,7 +256,7 @@ const Index = () => {
                 "--i": Math.random() * 10 + 1,
                 "--j": Math.random() * 7 + 1,
               } as React.CSSProperties}
-              className="bg-indigo-500/20 absolute list-none rounded-lg animate-float"
+              className="cp-preeditor-cube absolute list-none rounded-lg animate-float"
             />
           ))}
         </ul>
