@@ -1,109 +1,98 @@
-Here's the complete draft for your README file based on the structure and content you provided.
+# Compile Palace
 
----
-
-# Cloud Editor
-
-Cloud Editor is a real-time collaborative code editor built using the MERN stack and WebSocket technology (Socket.io). It allows multiple users to collaborate on code in real-time within shared rooms.
+Compile Palace is a real-time collaborative code editor. Sign in, create or join a room with a Room ID, and write code together; run it in the browser and see the output, save snippets to a per-user library, and switch between four colour themes and light/dark mode.
 
 ## Features
-- **Real-time code collaboration** using WebSocket.
-- **Code Editor** with syntax highlighting and autocompletion powered by Codemirror.
-- **User Rooms**: Create or join rooms with a unique Room ID to collaborate with other users.
-- **Live Notifications**: Instant feedback through toast notifications.
-- **Simple UI**: Responsive and user-friendly interface.
 
-## Project Structure
+- **Real-time collaboration** over Socket.io: shared rooms, live code sync, presence (people list with avatars).
+- **Code editor** built on CodeMirror 5, with syntax highlighting, a fixed line-number gutter, and custom overlay scrollbars.
+- **Run code** through a single execution service: Judge0 is primary, with JDoodle (via a Supabase Edge Function) as a fallback when Judge0 is unavailable. The Output panel shows Passed / Failed / Running, compiler diagnostics, and run metadata.
+- **Saved Code**: save, update, rename, delete and reopen snippets per user (Supabase), with animated list changes and an editor reveal when a snippet opens.
+- **Auth** with Supabase: Login and Signup share one animated curtain, which continues into the Join Room screen.
+- **Themes x modes**: four colour themes (Lavender, Forest, Sunset, Rainbow) crossed with Light and Dark. Theme and mode are independent, persisted separately in `localStorage` (`cp-theme`, `cp-mode`), and switched with the existing circular reveal transition.
+- **Responsive**: a dedicated mobile layout for the editor (compact two-row top bar, drawer for Room Info, bottom-docked Output).
+- **Frosted-glass design system**: shared glass tokens, liquid-glass hover, custom tooltips, and reduced-motion support.
+
+## Tech stack
+
+- Vite, React 18, TypeScript
+- Tailwind CSS with shadcn/ui (Radix primitives), lucide-react icons
+- CodeMirror 5
+- Supabase (auth, database, Edge Functions)
+- socket.io-client for the realtime layer (backend URL is set in `src/socket.ts`)
+- React Router, TanStack Query, Sonner (toasts)
+
+## Project structure
 
 ```
 src
-├── components
-│   ├── Client.js          # Handles client-side user display logic
-│   ├── Editor.js          # Initializes Codemirror and syncs code changes
 ├── pages
-│   ├── EditorPage.js      # Main page for the code editor, handles socket events
-│   ├── Home.js            # Landing page for creating and joining rooms
-├── Actions.js             # Contains socket event constants
-├── App.js                 # Main application component
-├── App.css                # Global styles
-├── index.js               # Entry point for the React app
-├── index.css              # Additional styles
-server.js                  # Handles the backend socket server
-socket.js                  # Initializes the socket connection
-.env                       # Environment variables for backend URL and configuration
+│   ├── Index.tsx            # Start screen and, once signed in, the Join Room screen
+│   ├── Auth.tsx             # Login / Signup (hosts the Auth -> Room curtain)
+│   └── EditorPage.tsx       # Editor, top bar, Room Info, Output (+ EditorPage.css)
+├── components
+│   ├── auth/                # AuthCard (curtain), forms, fields
+│   ├── room/                # RoomJoinCard
+│   ├── start/               # LaptopIntro animation
+│   ├── editor/              # Language / Theme / Mode selectors, Saved Code UI
+│   ├── Editor.tsx           # CodeMirror wrapper (exposes getValue())
+│   ├── OutputDrawer.tsx     # Output panel;  OutputSection.tsx renders results
+│   ├── BrandLogo.tsx        # Theme-aware logo mark
+│   └── ui/                  # shadcn/ui components
+├── context
+│   ├── ThemeContext.tsx     # theme + mode state, persistence, transitions
+│   ├── AuthContext.tsx      # Supabase session, signingOut flag
+│   └── RoomLaptopContext.tsx# the one shared laptop overlay for Start/Room
+├── lib/stageTransition.ts   # circular / rectangular View Transition reveals
+├── services
+│   ├── execution/           # Judge0 (primary) + JDoodle (fallback) providers
+│   ├── savedCodeService.ts  # Saved Code persistence (Supabase)
+│   └── roomService.ts
+├── hooks                    # useEditorSetup, useCollaboration, useLiquidGlass, ...
+├── socket.ts                # Socket.io client
+└── index.css                # design tokens: themes, modes, glass material
+supabase
+├── functions/execute-jdoodle  # JDoodle fallback Edge Function
+└── migrations                 # database schema
 ```
 
-## Dependencies
+## Getting started
 
-The following dependencies are used in this project:
+Requirements: Node.js and npm.
 
-- `"codemirror": "^5.65.2"`
-- `"nodemon": "^3.1.7"`
-- `"react": "^18.3.1"`
-- `"react-avatar": "^5.0.3"`
-- `"react-dom": "^18.3.1"`
-- `"react-hot-toast": "^2.4.1"`
-- `"react-router-dom": "^6.26.2"`
-- `"react-scripts": "5.0.1"`
-- `"socket.io": "^4.8.0"`
-- `"socket.io-client": "^4.8.0"`
-- `"uuid": "^10.0.0"`
-- `"web-vitals": "^2.1.4"`
-
-## Environment Variables
-
-The application uses a `.env` file to store environment variables. Ensure the following variable is configured:
-
-```
-REACT_APP_BACKEND_URL=<your-backend-url>
+```bash
+git clone https://github.com/positron100/compile-palace.git
+cd compile-palace
+npm install
 ```
 
-## Usage
+Create a `.env` file in the project root:
 
-1. **Home Page** (`Home.js`):
-   - Users can either create a new room by generating a unique Room ID or join an existing room by entering the Room ID and their username. Room navigation and handling are done via React Router and toast notifications.
+```
+VITE_SUPABASE_URL=<your Supabase project URL>
+VITE_SUPABASE_PUBLISHABLE_KEY=<your Supabase anon/publishable key>
+```
 
-2. **Editor Page** (`EditorPage.js`):
-   - The page initializes WebSocket connections using `socket.js`, handles user connections/disconnections, and synchronizes code in real time between all users in a room. It includes an `Editor.js` component, where Codemirror is used to create the code editor.
+The JDoodle fallback runs in a Supabase Edge Function and needs these secrets set in your Supabase project (not in `.env`): `JDOODLE_CLIENT_ID` and `JDOODLE_CLIENT_SECRET`.
 
-3. **Client Component** (`Client.js`):
-   - Displays user avatars and their usernames within the active room.
+Run the dev server (default port 8080):
 
-4. **Editor Component** (`Editor.js`):
-   - This component integrates Codemirror, handles code changes, and emits events to synchronize code across connected clients.
+```bash
+npm run dev
+```
 
-5. **Socket Initialization** (`socket.js`):
-   - Establishes WebSocket connections with a backend using the URL provided in the `.env` file.
+Other scripts: `npm run build`, `npm run build:dev`, `npm run preview`, `npm run lint`. Type-check with `npx tsc --noEmit`.
 
-## How to Run
+## How it fits together
 
-1. Clone the repository:
-   ```bash
-   git clone <repo-url>
-   cd cloud-editor
-   ```
+- **Realtime:** the editor connects to a Socket.io server (see `src/socket.ts`) that relays code changes and presence within a room. Rooms are identified by the Room ID entered on the Join Room screen.
+- **Running code:** `Run` always compiles the live CodeMirror buffer and the currently selected language, never a saved snapshot.
+- **Screen transitions:** Start to Auth to Join Room to Editor are choreographed animations. Notes on how they work, and the pitfalls found while building them, are in `claude_session_info.md`.
 
-2. Install dependencies:
-   ```bash
-   npm install
-   ```
+## Contributing notes
 
-3. Set up the environment variables in a `.env` file:
-   ```bash
-   REACT_APP_BACKEND_URL=[<your-backend-url>](https://code-editor-f145.onrender.com/)
-   ```
-
-4. Run the application:
-   ```bash
-   npm start
-   ```
-
-   The app will run on [http://localhost:3000](http://localhost:3000) by default.
+`claude_session_info.md` is the running engineering handover for this repo: what was built, root causes of past bugs, what was verified live and what was not, and testing caveats. Read it before touching the animation, transition, or editor-scroll code.
 
 ## License
 
-This project is licensed under the MIT License.
-
----
-
-Let me know if you need any adjustments!
+MIT

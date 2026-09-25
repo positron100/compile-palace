@@ -1082,6 +1082,30 @@
 @media (prefers-reduced-motion: reduce) {
   .editor-roster > * { animation: none; }
 }
+/* Participant names next to each avatar (Client.tsx) — hover tooltips don't
+   exist on touch, so on phones and any hover-less device the roster becomes
+   avatar + visible name rows. Hidden (display: none) everywhere else, so
+   desktop's avatar-only wrap is unchanged. */
+.editor-avatar__name {
+  display: none;
+}
+@media (max-width: 767px), (hover: none) {
+  .editor-roster {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: center;
+    gap: 0.375rem 0.625rem;
+  }
+  .editor-avatar__name {
+    display: block;
+    min-width: 0;
+    font-size: 0.8125rem;
+    font-weight: 500;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
 
 /* Section 6/7/8 — squircle avatar, deliberately quiet at rest: this used to
    permanently imitate the glass material (gradient fill, inset highlight,
@@ -1329,7 +1353,30 @@
 /* active-line addon (useEditorSetup: styleActiveLine) — a quiet highlight,
    not a bright IDE-style band, so it reads as a hint rather than a callout. */
 .editor-surface .CodeMirror-activeline-background {
-  background: hsl(260 50% 80% / 0.06) !important;
+  background: hsl(var(--cp-accent) / 0.07) !important;
+}
+
+/* Light-mode theme link for the editor. Root cause of "text theme doesn't
+   change in light mode": light mode used CodeMirror's stock "neat" colors
+   (theme/neat.css: keyword `blue`, native black caret, default selection) —
+   fixed hues with no tie to --cp-accent — while the `.dark` palette below
+   already routes keyword/caret/selection/active-line through the active
+   theme. Same four hooks here, using -deep for the keyword and caret so they
+   keep AA-ish contrast on the light glass (raw --cp-accent is too pale for
+   Sunset/Lavender text). Strings/numbers/comments stay neat's fixed hues, as
+   in dark mode. The `.dark` rules below have higher specificity, so they
+   still win in dark. */
+.editor-surface .cm-s-neat span.cm-keyword {
+  color: hsl(var(--cp-accent-deep)) !important;
+}
+.editor-surface .CodeMirror-cursor {
+  border-left: 1.5px solid hsl(var(--cp-accent-deep)) !important;
+}
+.editor-surface .CodeMirror-selected {
+  background: hsl(var(--cp-accent) / 0.18) !important;
+}
+.editor-surface .CodeMirror-focused .CodeMirror-selected {
+  background: hsl(var(--cp-accent) / 0.22) !important;
 }
 
 /* Dark-mode editor syntax palette — root cause of "code hard to read in
@@ -1761,19 +1808,225 @@
 /* --- Mobile (<768px): room panel becomes the existing Sheet drawer, output
    grows to a fuller bottom sheet, topbar shrinks further. --- */
 @media (max-width: 767px) {
+  /* Two deliberate rows instead of a desktop row that overflows the edge.
+     Root cause of the old 3-row / clipped-Run layout: the right cluster is a
+     flex item whose min-content is its widest nowrap group (~212px of icons),
+     so it could never shrink to fit — only its INNER groups wrapped. Fix:
+     flatten `.editor-topbar__right` and the status group with
+     `display: contents` so their children become direct flex items of the
+     bar, then order them into
+       row 1: [menu] [language ....] [status dot] [Run]
+       row 2: [users ..................] [copy save format theme mode]
+     Nothing is removed — Room ID stays reachable in the Room panel, and
+     every control keeps a 40px hit area. */
   .editor-topbar {
-    min-height: 3.25rem;
-    padding: 0.5rem 0.75rem;
-    gap: 0.5rem;
+    position: relative;
+    flex-wrap: wrap;
+    align-items: center;
+    row-gap: 0;
+    column-gap: 0.5rem;
+    min-height: 0;
+    padding: 0.5rem 0.625rem;
   }
   .editor-topbar__brand {
     display: none;
   }
+  .editor-topbar__right,
+  .editor-topbar__right > .editor-topbar__group:first-child {
+    display: contents;
+  }
+  .editor-topbar > .cp-liquid {
+    order: 0;
+    width: 2.5rem;
+    height: 2.5rem;
+    flex-shrink: 0;
+  }
+  .editor-topbar > .editor-lang {
+    order: 1;
+    flex: 1 1 0;
+    min-width: 0;
+  }
+  .editor-topbar .editor-lang__trigger {
+    width: 100%;
+    max-width: 12rem;
+    min-height: 2.5rem;
+  }
+  .editor-topbar .editor-chip.glass-subtle {
+    order: 2;
+    flex-shrink: 0;
+  }
+  .editor-topbar .editor-run-btn {
+    order: 3;
+    flex-shrink: 0;
+    height: 2.5rem;
+    min-width: 2.75rem;
+  }
+  /* Forced row break between the two rows, doubling as the 6px gap between
+     them (row-gap stays 0 so a zero-height break line can't add a second
+     gap). */
+  .editor-topbar::after {
+    content: "";
+    order: 4;
+    flex: 0 0 100%;
+    height: 0.375rem;
+  }
+  .editor-topbar .editor-chip--quiet {
+    order: 5;
+    flex-shrink: 0;
+  }
+  /* Room ID chip (2nd chip): too wide for row 2 on phones — it is shown
+     from 480px up, and always available in the Room panel. */
+  .editor-topbar__right > .editor-topbar__group:first-child > .editor-chip:nth-child(2) {
+    order: 6;
+    display: none;
+  }
+  .editor-topbar__right > .editor-topbar__group:nth-child(2) {
+    order: 7;
+    margin-left: auto;
+    gap: 0.125rem;
+    flex-shrink: 0;
+  }
+  .editor-topbar__group .editor-rail__icon-btn {
+    width: 2.5rem;
+    height: 2.5rem;
+  }
+  /* Expanded inline Save form: overlay the whole second row (anchored to the
+     top bar, not to the save icon) instead of asking 5 icons + a 12rem form
+     to share ~340px — which would wrap the bar to a third row and shove the
+     editor down while the user types. Own keyframes because the desktop
+     one animates `width`, which would pin the form at 12rem. */
+  .editor-inline-save {
+    position: static;
+  }
+  .editor-inline-save__form {
+    position: absolute;
+    left: 0.625rem;
+    right: 0.625rem;
+    bottom: 0.5rem;
+    width: auto;
+    height: 2.5rem;
+    z-index: 2;
+    animation-name: editor-inline-save-expand-mobile;
+    /* Sits directly over the row-2 icons, so it must actually cover them —
+       the desktop glass tint (~60% alpha) let them ghost through. */
+    background-color: hsl(var(--card) / 0.97);
+  }
+  .dark .editor-inline-save__form {
+    background-color: hsl(230 35% 12% / 0.97);
+  }
+  .editor-inline-save__input {
+    font-size: 1rem; /* >=16px: stops iOS Safari zooming the page on focus */
+  }
+  .editor-inline-save__confirm {
+    width: 2rem;
+    height: 2rem;
+  }
+  .editor-inline-save__error {
+    right: 0.625rem;
+    white-space: normal;
+    max-width: calc(100vw - 2.5rem);
+  }
+  /* Room panel drawer (Radix Sheet). The shared Sheet paints `bg-background`
+     under a black/80 overlay, which read as a muddy gray box next to the
+     frosted-glass surfaces everywhere else. Same glass recipe as the other
+     panels, a touch more opaque because the page behind is dimmed. */
+  .editor-room-sheet.glass-secondary {
+    background-color: hsl(var(--card) / 0.92);
+    background-image: linear-gradient(180deg, hsl(var(--cp-accent) / 0.08), transparent 40%), var(--glass-primary-sheen);
+    border-color: var(--glass-primary-border);
+    padding-bottom: env(safe-area-inset-bottom);
+    outline: none;
+  }
+  .dark .editor-room-sheet.glass-secondary {
+    background-color: hsl(230 35% 12% / 0.94);
+  }
+  /* Rainbow keeps its regional composition: the Room panel is the forest
+     region (desktop gets this from the page atmosphere showing through the
+     translucent sidebar; the drawer is more opaque, so it carries a soft
+     forest wash of its own). */
+  [data-theme="rainbow"] .editor-room-sheet.glass-secondary {
+    background-image:
+      radial-gradient(120% 55% at 0% 0%, hsl(152 45% 40% / 0.16), transparent 70%),
+      linear-gradient(180deg, hsl(var(--cp-accent) / 0.06), transparent 40%),
+      var(--glass-primary-sheen);
+  }
+  .dark[data-theme="rainbow"] .editor-room-sheet.glass-secondary {
+    background-image:
+      radial-gradient(120% 55% at 0% 0%, hsl(152 55% 35% / 0.22), transparent 70%),
+      linear-gradient(180deg, hsl(var(--cp-accent) / 0.06), transparent 40%),
+      var(--glass-primary-sheen);
+  }
+  /* Radix's close button is a bare 16px icon — give it a real touch target. */
+  .editor-room-sheet > button {
+    top: 0.5rem;
+    right: 0.5rem;
+    width: 2.5rem;
+    height: 2.5rem;
+    display: grid;
+    place-items: center;
+    border-radius: 9999px;
+  }
+  /* `.cp-liquid` (align-items: center) centered these column-flex names
+     inside the row; left-align them in the narrow drawer. Desktop's rail
+     panel keeps its existing look. */
+  .editor-history__item-main {
+    align-items: flex-start;
+  }
+  /* Touch targets: these controls are 24-36px on desktop. Grow the real
+     box to 40px (a ::after hit-area extension would be clipped by
+     `.cp-liquid { overflow: hidden }`) and cancel the growth with negative
+     margins so surrounding layout — including the 44px collapsed output
+     strip — doesn't move. Inline `style` on some of them needs !important. */
+  .editor-output .editor-output__icon-btn {
+    width: 2.5rem;
+    height: 2.5rem;
+    margin: -0.375rem;
+  }
+  .editor-room-sheet .editor-copy-btn {
+    height: 2.5rem !important;
+    min-width: 2.5rem;
+    margin: -0.375rem 0 !important;
+  }
+  .editor-room-sheet .editor-sidebar__section--history .editor-rail__icon-btn {
+    width: 2.5rem !important;
+    height: 2.5rem !important;
+    margin: -0.5rem !important;
+  }
+  .editor-room-sheet .editor-history__item-menu {
+    width: 2.5rem;
+    height: 2.5rem;
+    margin: -0.375rem;
+  }
+  .editor-room-sheet .editor-history__scroll-arrow {
+    width: 2rem;
+    height: 2rem;
+  }
+  .editor-room-sheet .editor-action-btn {
+    height: 2.5rem;
+  }
+  .editor-lang__option,
+  .theme-selector__option {
+    height: 2.5rem;
+  }
   .editor-workspace {
     padding: 0.5rem;
   }
+  /* Was 52vh: with the two-row top bar that left the editor ~140px tall at
+     390x844. Now the output takes roughly a third of the screen (floor keeps
+     it legible on short phones, ceiling on tall ones) and the editor keeps
+     the rest. */
   .editor-workspace[data-output-expanded="true"] {
-    --output-dim: 52vh;
+    --output-dim: clamp(11rem, 36dvh, 20rem);
+  }
+}
+@keyframes editor-inline-save-expand-mobile {
+  from { opacity: 0; transform: scale(0.96); }
+  to { opacity: 1; transform: scale(1); }
+}
+/* Room ID chip fits on the second row once there is room for it. */
+@media (min-width: 480px) and (max-width: 767px) {
+  .editor-topbar__right > .editor-topbar__group:first-child > .editor-chip:nth-child(2) {
+    display: inline-flex;
   }
 }
 

@@ -161,7 +161,7 @@ const Index = () => {
   // the sign-out circle (handleSignOut above) is what visibly reveals this.
   if ((!user && !holdRoomView) || signedOutView) {
     return (
-      <div className="min-h-screen flex items-center justify-center cp-atmosphere relative overflow-hidden px-6 sm:px-8 py-10">
+      <div className="min-h-screen flex items-center justify-center cp-atmosphere relative overflow-hidden px-6 sm:px-8 py-10" style={{ minHeight: '100dvh' }}>
         <div className="relative z-10 flex flex-col items-center gap-8 w-full max-w-md">
           <LaptopIntro />
 
@@ -233,7 +233,7 @@ const Index = () => {
     // measured 22px jump (auth-stage__viewport y=178 -> room-stage__viewport
     // y=156), not a rounding artifact. Matching the wrapper exactly removes
     // the discrepancy instead of papering over it with an offset.
-    <div className="min-h-screen flex items-center justify-center cp-atmosphere relative overflow-hidden px-6 sm:px-8 py-10">
+    <div className="min-h-screen flex items-center justify-center cp-atmosphere relative overflow-hidden px-6 sm:px-8 py-10" style={{ minHeight: '100dvh' }}>
       <div className="relative z-10 w-full">
         <RoomJoinCard
           roomId={roomId}

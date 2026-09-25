@@ -33,7 +33,7 @@ const IconButton = React.forwardRef<HTMLButtonElement, React.ButtonHTMLAttribute
         type="button"
         onMouseMove={liquid.onMouseMove}
         onMouseLeave={liquid.onMouseLeave}
-        className={`cp-liquid h-7 w-7 rounded-full ${className}`}
+        className={`cp-liquid editor-output__icon-btn h-7 w-7 rounded-full ${className}`}
         {...props}
       />
     );

@@ -8,7 +8,9 @@ import { useTheme } from "@/context/ThemeContext";
  */
 export function WavLoader({ size = 96 }: { size?: number }) {
   const { mode } = useTheme();
-  const ink = mode === "dark" ? "#f5f5f7" : "#131316";
+  // Theme accent: the deeper shade on light glass, the (already brightened)
+  // dark-mode accent on dark glass. Rainbow's accent is lavender-led by design.
+  const ink = mode === "dark" ? "hsl(var(--cp-accent))" : "hsl(var(--cp-accent-deep))";
 
   return (
     <svg

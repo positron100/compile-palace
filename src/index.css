@@ -751,9 +751,13 @@
 .cp-lift {
   transition: translate 140ms ease, box-shadow 140ms ease;
 }
-.cp-lift:hover:not(:disabled) {
-  translate: 0 -2px;
-  box-shadow: 0 12px 24px -14px hsl(var(--cp-accent-deep) / 0.55);
+/* Hover-capable pointers only: on touch, :hover sticks after a tap and would
+   leave the button visibly lifted until something else is tapped. */
+@media (hover: hover) {
+  .cp-lift:hover:not(:disabled) {
+    translate: 0 -2px;
+    box-shadow: 0 12px 24px -14px hsl(var(--cp-accent-deep) / 0.55);
+  }
 }
 .cp-lift:active:not(:disabled) {
   translate: 0;
@@ -768,8 +772,10 @@
 .cp-accent-bg {
   background-color: hsl(var(--cp-accent));
 }
-.cp-accent-bg:hover:not(:disabled) {
-  background-color: hsl(var(--cp-accent-deep));
+@media (hover: hover) {
+  .cp-accent-bg:hover:not(:disabled) {
+    background-color: hsl(var(--cp-accent-deep));
+  }
 }
 /* Rainbow: same 3-pool blend as the auth curtain (same hues/recipe), reused
    here instead of the solid --cp-accent fill so every CTA sharing this class
@@ -787,9 +793,11 @@
     radial-gradient(105% 115% at 88% 80%, hsl(22 80% 55% / 0.92), transparent 74%),
     linear-gradient(165deg, hsl(243 75% 59%), hsl(152 45% 32%) 50%, hsl(22 80% 55%));
 }
-[data-theme="rainbow"] .cp-accent-bg:hover:not(:disabled) {
-  background-color: hsl(190 40% 40%);
-  filter: brightness(1.12);
+@media (hover: hover) {
+  [data-theme="rainbow"] .cp-accent-bg:hover:not(:disabled) {
+    background-color: hsl(190 40% 40%);
+    filter: brightness(1.12);
+  }
 }
 @media (prefers-reduced-motion: reduce) {
   .cp-lift {

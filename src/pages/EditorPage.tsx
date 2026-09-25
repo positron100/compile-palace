@@ -1,5 +1,6 @@
 
 import React, { useEffect, useRef, useState, useCallback } from "react";
+import { flushSync } from "react-dom";
 import Client from "../components/Client";
 import Editor, { EditorHandle } from "../components/Editor";
 import OutputDrawer from "../components/OutputDrawer";
@@ -14,7 +15,7 @@ import { startEditorRevealTransition } from "@/lib/stageTransition";
 import ACTIONS from "../Actions";
 import { toast } from "sonner";
 import { submitCode, languageOptions } from "../services/compileService";
-import { Play, Copy, LogOut, Users, Menu, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Check, Loader2, Pin, PinOff, PanelBottom, PanelRight, WandSparkles, Hash, Save } from "lucide-react";
+import { Play, Copy, LogOut, DoorOpen, Users, Menu, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Check, Loader2, Pin, PinOff, PanelBottom, PanelRight, WandSparkles, Hash, Save } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTitle, SheetDescription } from "@/components/ui/sheet";
 import { LanguageDropdown } from "@/components/editor/LanguageDropdown";
@@ -60,6 +61,26 @@ function EditorPage() {
   const [socketError, setSocketError] = useState(false);
 
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const mobileMenuOpenRef = useRef(false);
+  mobileMenuOpenRef.current = mobileMenuOpen;
+  const revealPendingRef = useRef(false);
+  const revealTokenRef = useRef(0);
+  const unmountedRef = useRef(false);
+  useEffect(() => {
+    unmountedRef.current = false;
+    return () => {
+      unmountedRef.current = true;
+    };
+  }, []);
+  // Reopening the drawer while a close-then-reveal is pending cancels it
+  // (and unblocks later taps) instead of leaving a dangling pending open.
+  useEffect(() => {
+    if (mobileMenuOpen && revealPendingRef.current) {
+      revealPendingRef.current = false;
+      revealTokenRef.current++;
+    }
+  }, [mobileMenuOpen]);
+  const roomSheetRef = useRef<HTMLDivElement>(null);
   const [connectionStatus, setConnectionStatus] = useState("Connecting...");
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarMode, setSidebarMode] = useState<"normal" | "floating">("normal");
@@ -399,6 +420,48 @@ function EditorPage() {
         applyChange();
       }
     };
+    // A close-then-reveal already in flight owns the editor; a second tap
+    // must not start a second reveal.
+    if (revealPendingRef.current) return;
+    if (mobileMenuOpen) {
+      // Mobile: Room Info is the Radix Sheet. Close it with its own exit
+      // animation and start the reveal only once that animation has really
+      // finished (its content + overlay Animation objects settle) — never on
+      // the state flip, which would play the reveal behind the still-visible
+      // drawer. flushSync so Radix has already switched to data-state=closed
+      // and the exit animations exist to be awaited; with none running
+      // (reduced motion) the wait is empty and the reveal starts at once.
+      revealPendingRef.current = true;
+      const sheetEl = roomSheetRef.current;
+      flushSync(() => setMobileMenuOpen(false));
+      const anims = [sheetEl, sheetEl?.previousElementSibling].flatMap(
+        (el) => (el ? el.getAnimations() : [])
+      );
+      const token = ++revealTokenRef.current;
+      // `finished` resolves a beat before Radix Presence unmounts the Sheet
+      // (it does so on `animationend`), so also wait for the element to be
+      // really gone — the reveal must never share a frame with the drawer.
+      const removed = () =>
+        new Promise<void>((resolve) => {
+          if (!sheetEl || !sheetEl.isConnected) return resolve();
+          const mo = new MutationObserver(() => {
+            if (!sheetEl.isConnected) {
+              mo.disconnect();
+              resolve();
+            }
+          });
+          mo.observe(document.body, { childList: true, subtree: true });
+        });
+      void Promise.allSettled(anims.map((a) => a.finished))
+        .then(removed)
+        .then(() => {
+          // Reopened mid-close or page left: drop the pending open.
+          if (token !== revealTokenRef.current || unmountedRef.current || mobileMenuOpenRef.current) return;
+          revealPendingRef.current = false;
+          fire();
+        });
+      return;
+    }
     if (sidebarMode === "floating" && sidebarOpen) {
       setSidebarOpen(false);
       setTimeout(fire, 260);
@@ -629,7 +692,7 @@ function EditorPage() {
         </ModernTooltip>
         <ModernTooltip content="Leave Room" side="right">
           <LiquidButton className="editor-rail__icon-btn text-red-600" onClick={leaveRoom} aria-label="Leave Room">
-            <LogOut size={15} />
+            <DoorOpen size={15} />
           </LiquidButton>
         </ModernTooltip>
         <ModernTooltip content="Sign Out" side="right">
@@ -748,7 +811,7 @@ function EditorPage() {
       <div className="editor-sidebar__section editor-sidebar__actions">
         <div className="editor-sidebar__label">Room Actions</div>
         <LiquidButton className="editor-action-btn text-red-600" onClick={leaveRoom}>
-          <LogOut size={15} />
+          <DoorOpen size={15} />
           Leave Room
         </LiquidButton>
         <LiquidButton className="editor-action-btn opacity-75" onClick={handleSignOut}>
@@ -956,7 +1019,18 @@ function EditorPage() {
         )}
 
         <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
-          <SheetContent side="left" className="w-[85vw] sm:w-[350px] p-0 glass-secondary flex flex-col">
+          <SheetContent
+            side="left"
+            ref={roomSheetRef}
+            className="editor-room-sheet w-[85vw] sm:w-[350px] p-0 glass-secondary flex flex-col"
+            // Radix would focus the first control (Copy Room ID), whose
+            // focus-triggered tooltip then sits open over the Room ID with
+            // no way to dismiss it on touch. Focus the panel itself instead.
+            onOpenAutoFocus={(e) => {
+              e.preventDefault();
+              roomSheetRef.current?.focus();
+            }}
+          >
             <SheetTitle className="sr-only">Room panel</SheetTitle>
             <SheetDescription className="sr-only">Room ID, connection status, participants and room actions</SheetDescription>
             {SidebarPanelContent({})}

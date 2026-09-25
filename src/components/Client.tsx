@@ -44,21 +44,31 @@ const Client: React.FC<ClientProps> = ({ username, socketId, isYou = false }) =>
   }
 
   return (
-    <ModernTooltip content={isYou ? `${username} (You)` : username}>
-      <Avatar
-        key={socketId || username}
-        ref={liquid.ref}
-        onMouseMove={liquid.onMouseMove}
-        onMouseLeave={liquid.onMouseLeave}
-        tabIndex={0}
-        className="cp-liquid editor-avatar h-9 w-9 shrink-0"
-        aria-label={isYou ? `${username} (you)` : username}
-      >
-        <AvatarFallback className="editor-avatar__fallback text-xs font-semibold" style={{ background: 'transparent' }}>
-          {initials}
-        </AvatarFallback>
-      </Avatar>
-    </ModernTooltip>
+    <>
+      <ModernTooltip content={isYou ? `${username} (You)` : username}>
+        <Avatar
+          key={socketId || username}
+          ref={liquid.ref}
+          onMouseMove={liquid.onMouseMove}
+          onMouseLeave={liquid.onMouseLeave}
+          tabIndex={0}
+          className="cp-liquid editor-avatar h-9 w-9 shrink-0"
+          aria-label={isYou ? `${username} (you)` : username}
+        >
+          <AvatarFallback className="editor-avatar__fallback text-xs font-semibold" style={{ background: 'transparent' }}>
+            {initials}
+          </AvatarFallback>
+        </Avatar>
+      </ModernTooltip>
+      {/* Touch has no hover, so the tooltip above never shows: on phones (and
+          any hover-less device) the roster becomes a name list instead —
+          hidden everywhere else (EditorPage.css), and aria-hidden since the
+          avatar already carries the accessible name. */}
+      <span className="editor-avatar__name" aria-hidden="true">
+        {username}
+        {isYou && <span className="opacity-60"> (You)</span>}
+      </span>
+    </>
   );
 };
 

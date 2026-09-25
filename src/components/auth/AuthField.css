@@ -67,6 +67,12 @@
 .auth-field__control--has-reveal {
   padding-right: 2.75rem;
 }
+/* Edge/Chromium-on-Windows draws its own reveal (eye) and clear (x) buttons
+   inside password inputs — a second, unthemed eye next to our own toggle. */
+.auth-field__control::-ms-reveal,
+.auth-field__control::-ms-clear {
+  display: none;
+}
 /* Mouse/touch focus: no outline, no ring — the lift + a Compile Palace accent
    border + inner highlight is the whole affordance. Text inputs match
    `:focus-visible` on a plain click too, so the ring below is gated by our
@@ -109,9 +115,28 @@
   cursor: pointer;
   transition: color 140ms ease, background-color 140ms ease;
 }
-.auth-field__reveal:hover {
-  color: hsl(var(--foreground));
-  background-color: hsl(var(--muted));
+@media (hover: hover) {
+  .auth-field__reveal:hover {
+    color: hsl(var(--foreground));
+    background-color: hsl(var(--muted));
+  }
+}
+/* Touch: 2rem visual, but a 44px hit area (::after is part of the button, so
+   taps on it count) without changing the icon/lift layout. */
+@media (pointer: coarse) {
+  .auth-field__reveal::after {
+    content: "";
+    position: absolute;
+    inset: -0.375rem;
+  }
+}
+/* iOS Safari zooms the page on focusing any input under 16px and never
+   zooms back out — keep the field and its mirrored preview text in step. */
+@media (max-width: 767px) {
+  .auth-field__control,
+  .auth-field__preview {
+    font-size: 1rem;
+  }
 }
 .auth-field__reveal:focus-visible {
   outline: 2px solid hsl(var(--cp-accent));

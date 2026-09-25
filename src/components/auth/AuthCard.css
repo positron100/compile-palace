@@ -469,11 +469,13 @@
   cursor: pointer;
   transition: background-color 140ms ease, border-color 140ms ease, box-shadow 140ms ease, translate 140ms ease;
 }
-.auth-stage__cta:hover {
-  background-color: hsl(var(--accent-fg) / 0.16);
-  border-color: hsl(var(--accent-fg) / 0.9);
-  translate: 0 -2px;
-  box-shadow: 0 10px 24px -12px hsl(222 84% 5% / 0.45), inset 0 1px 0 hsl(var(--accent-fg) / 0.48);
+@media (hover: hover) {
+  .auth-stage__cta:hover {
+    background-color: hsl(var(--accent-fg) / 0.16);
+    border-color: hsl(var(--accent-fg) / 0.9);
+    translate: 0 -2px;
+    box-shadow: 0 10px 24px -12px hsl(222 84% 5% / 0.45), inset 0 1px 0 hsl(var(--accent-fg) / 0.48);
+  }
 }
 .auth-stage__cta:active {
   translate: 0;

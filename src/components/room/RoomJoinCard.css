@@ -156,8 +156,26 @@
   cursor: pointer;
   transition: color 140ms ease;
 }
-.room-form__signout:hover {
-  color: hsl(0 70% 55%);
+@media (hover: hover) {
+  .room-form__signout:hover {
+    color: hsl(0 70% 55%);
+  }
+}
+/* Touch: 2.5rem visual, 44px hit area (see AuthField.css's reveal button). */
+@media (pointer: coarse) {
+  .room-stage__form .room-form__signout::after {
+    content: "";
+    position: absolute;
+    inset: -2px;
+  }
+  .room-form__link {
+    position: relative;
+  }
+  .room-form__link::after {
+    content: "";
+    position: absolute;
+    inset: -0.875rem -0.5rem;
+  }
 }
 .room-form__signout:focus-visible {
   outline: 2px solid hsl(var(--cp-accent));
@@ -209,8 +227,10 @@
   padding: 0;
   cursor: pointer;
 }
-.room-form__link:hover {
-  color: hsl(var(--cp-accent-deep));
+@media (hover: hover) {
+  .room-form__link:hover {
+    color: hsl(var(--cp-accent-deep));
+  }
 }
 .room-form__link:focus-visible {
   outline: 2px solid hsl(var(--cp-accent));

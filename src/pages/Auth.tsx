@@ -53,7 +53,7 @@ const Auth = () => {
   }, [user?.id, loading, reduceMotion, navigate]);
 
   return (
-    <div className="min-h-screen flex items-center justify-center cp-atmosphere relative overflow-hidden px-6 sm:px-8 py-10">
+    <div className="min-h-screen flex items-center justify-center cp-atmosphere relative overflow-hidden px-6 sm:px-8 py-10" style={{ minHeight: '100dvh' }}>
       <div className="relative z-10 w-full">
         <AuthCard
           mode={mode}

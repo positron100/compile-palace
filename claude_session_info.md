@@ -1,6 +1,12 @@
 # Claude session handover — Compile Palace
 
-Session dates: 2026-09-20 to 2026-09-21 (multi-day, continuous conversation).
+**Latest session: 2026-09-23 to 2026-09-25 — see "Phase 5" below (theme/mode
+system, Auth→Room fixes, mobile pass, Saved Code sequencing, several bug
+fixes). Start there if resuming; Phases 1–4 are earlier sessions.** Project
+root is now `D:\personal projects\compile-palace` (the `C:\My Programs\...`
+path further down is from the earlier session).
+
+Session dates (Phases 1–3): 2026-09-20 to 2026-09-21 (multi-day, continuous conversation).
 Scope: Phase 1 — laptop closing animation (frozen, prior work). Phase 2 —
 form-field interaction audit (frozen, prior work, no net change). **Phase 3
 (this session's main work)** — Start→Auth circular reveal, Auth→Room curtain
@@ -638,9 +644,172 @@ checked), reduced-motion for the new scrollbar/list-animation CSS (media
 queries are in place following the existing pattern, not live-toggled and
 re-screenshotted).
 
+## Phase 5 — Theme × mode, Auth→Room fixes, mobile, misc bug fixes (2026-09-23 → 09-25)
+
+Most work was done through parallel/forked sub-agents, then reviewed. Every
+item below says what was verified live and what was not.
+
+### 5a. Theme × mode system (COMPLETE, live-verified except where noted)
+- **Two independent dimensions:** theme (`lavender|forest|sunset|rainbow`,
+  `data-theme` on `<html>`) and mode (`light|dark`, the `.dark` class). State
+  in `src/context/ThemeContext.tsx`, two `localStorage` keys (`cp-theme`,
+  `cp-mode`), both applied pre-mount in `main.tsx` (no flash). Dark is NOT a
+  theme. Selectors: `components/editor/ThemeSelector.tsx` (4 options) and
+  `ModeSelector.tsx` (sun/moon toggle). Both live in the Editor top bar only.
+- **Tokens** (`src/index.css`): `--cp-accent`, `-soft`, `-deep`, `-pale`,
+  `--cp-border-tint`, `--cp-shadow-tint`, `--cp-atmosphere-1/2`, per theme, plus
+  `.dark[data-theme=X]` compound blocks. `--cp-accent` is deliberately RAISED
+  in lightness in dark mode (legibility of icons/borders) — surfaces that need
+  to be "deeper" in dark (cubes, atmosphere) use their own dark values.
+- **Rainbow** is a composed multi-zone theme, not a gradient: editor
+  lavender / Room Info forest / Output sunset with soft radials; the Auth
+  curtain and accent-filled buttons use a 3-pool lavender/forest/sunset blend.
+  `--cp-accent` stays lavender-led under Rainbow, so Rainbow rules reference the
+  three hues (243 / 152 / 22) directly.
+- **Transitions:** theme switch = circular reveal via the existing
+  `startStageTransition` in `lib/stageTransition.ts` (the circle reveals the
+  real re-themed DOM, so it is automatically destination-coloured). Mode
+  switch = same engine, `"forward"` (light→dark, grows from the toggle) /
+  `"reverse"` (dark→light, shrinks back into the toggle), origin measured from
+  the toggle's live rect at click time. Reduced motion skips the circle.
+- **Cube field (Editor):** generated once in a `useRef` in `EditorPage.tsx`
+  (previously `Math.random()` ran in render and reshuffled every cube on any
+  re-render — that was the "cubes reset" bug). Tint is a style/CSS colour swap
+  only; identity was verified with a DOM-node probe across theme/mode switches.
+- **Pre-editor cubes** (Start, Login/Signup, Join Room) use a separate token
+  layer: `--cp-preeditor-cube`, `--cp-preeditor-cube-opacity`, class
+  `.cp-preeditor-cube`. The Editor's cubes are untouched. Editor-cube
+  theme/mode colour work was requested once and stopped before any change —
+  the user then said the Editor cubes are approved as-is.
+- **Logo:** `components/BrandLogo.tsx` inlines the SVG so its fill follows the
+  theme (favicon/apple-touch-icon are static PNG/ICO, flat 2D variants).
+  Project logo ≠ theme icon ≠ mode icon; keep them separate.
+- **Editor text:** dark mode has a CodeMirror syntax palette in `EditorPage.css`
+  (CodeMirror 5's stock `neat` theme has no dark variant). Light-mode keyword
+  colour / caret / selection / active line now also follow the theme via
+  `--cp-accent-deep` (contrast vs white: Lavender 11.3, Forest 8.8, Sunset 5.2).
+  **Not verified:** contrast against the real glass surface; mobile.
+- **Other dark-mode gaps fixed:** Output panel content (hardcoded
+  `bg-slate-50` etc. → `dark:` variants), gutter (was near-opaque; now uses
+  `--glass-secondary-bg`), Sonner toast (`components/ui/sonner.tsx` read
+  `next-themes`, an unrelated provider, so it never saw dark; also an inert
+  Tailwind arbitrary-variant class), Join Room viewport shadow/background,
+  compile loader (`components/WavLoader.tsx`, now theme-coloured).
+
+### 5b. Editor / session bug fixes (each root-caused, not patched)
+- **Room Info stutter:** panel content shared the panel's own geometry
+  transition. Content now settles after (`.editor-sidebar__content`, keyframe
+  animation — a `transition` never ran because the node mounts already in its
+  "open" state).
+- **Blank Editor after joining a room (intermittent):** CodeMirror was mounted
+  via `document.getElementById` in a `[]`-deps effect; now a React ref threaded
+  `Editor.tsx → useEditorSetup`. Also added an app-wide `ErrorBoundary`
+  (`components/ErrorBoundary.tsx`) so a render error shows a Reload UI instead
+  of a blank app. **Not confirmed** whether the ref change alone fixed the
+  original report; the boundary logs the throwing error if it recurs.
+- **Run used a stale saved-code snapshot:** `handleCompile` read a mirrored
+  `codeRef`; it now calls `EditorHandle.getValue()` (reads CodeMirror live).
+  Verified live in 3 scenarios.
+- **Sign-out from the Editor:** two independent redirects raced (RequireAuth's
+  `<Navigate to="/auth">` and one in `EditorPage`'s render body). Both now
+  respect `AuthContext.signingOut`; RequireAuth renders `children` (not `null`)
+  while signing out, otherwise the transition captures a blank "before" frame.
+- **Sign-out from Join Room (`Index.tsx`):** Start now appears when the circle
+  releases, not when Supabase's `signOut()` returns (a slow logout used to leave
+  Join Room up). A genuine error rolls back with a toast.
+- **`stageTransition.ts`:** rect *reverse* now mirrors keyframe offsets
+  (`1 - offset`) — the old reverse kept the ascending offsets with reversed
+  values, cramming the motion into the first ~20% ("reverse feels too fast").
+  Added a 4s watchdog for a View Transition whose `finished` never settles
+  (the app would stay inert until reload).
+
+### 5c. Auth → Room continuity + interaction (many passes; final state)
+- **Navigation used to depend on `transitionend` for one property** — it never
+  fires if the property's value doesn't change (Signup entry: `transform`;
+  Dark+Rainbow: `background-color`), stranding the user on the decoy preview at
+  `/auth` with dead inputs. `AuthCard.tsx` now waits on
+  `curtain.getAnimations()` → `finished` (and proceeds immediately if nothing
+  ran). This was the root of "can't type in Join Room" / "nothing clickable".
+- **The decoy `.auth-stage__room` is `pointer-events: none`** — it only hosts
+  a cosmetic `RoomJoinCard` with no-op props. Do not make it interactive.
+- **What made the curtain read as a "handoff":** (1) `.room-stage__viewport` and
+  `.room-stage__form.glass-primary` painted their own opaque layers above the
+  curtain (stripped inside `.auth-stage__room`), (2) `backdrop-filter` had no
+  base value, so `none → blur()` snapped (curtain base is now
+  `blur(0px) saturate(1)`), (3) the closed-laptop placeholder slid in at full
+  opacity (now fades with its slide), (4) the curtain's settled material
+  didn't match the real panel (border/sheen/footprint; Rainbow's gradient sat on
+  a non-fading `background-image`) — fixed with a `::after` overlay and a
+  `--cp-curtain-pools` variable, (5) Room content revealed too early (now
+  ~78–100%). A `clip-path` inset morphs the curtain to the panel footprint on
+  ≥768px only. **Not verified:** the actual sweep frames — see the environment
+  caveat below; the user should watch it in a real browser.
+- **`.room-stage__viewport` has `overflow: hidden`, which clips its child's
+  `box-shadow`.** The "lift" you see is the viewport's own shadow (it now has a
+  `.dark` variant). Editing `--glass-primary-shadow` alone does nothing there.
+- **Closed-laptop line** uses `hsl(var(--cp-accent) / …)`; inside Join Room
+  `RoomJoinCard.css` still overrides the rim to a white highlight.
+
+### 5d. Mobile responsiveness
+- **Editor (done, verified at 320–480 + 768/834):** ≤767px block in
+  `EditorPage.css`; two-row top bar (104px), 40px touch targets, editor keeps
+  ~650px at 390×844, Output `clamp(11rem, 36dvh, 20rem)` expanded / 44px
+  collapsed, Room Info drawer (Radix Sheet) with no auto-focus tooltip, People
+  show names (`Client.tsx`). Desktop 1280/1440 matched a before-snapshot.
+- **Pre-editor screens (Start / Login / Signup / Join Room): INCOMPLETE.** A
+  fork hit a rate limit mid-run and never reported. Partial CSS edits exist in
+  `AuthCard.css`, `AuthField.css`, `RoomJoinCard.css`, `Index.tsx`, `Auth.tsx`
+  and the mobile-emulation pass was **not** finished or verified — re-audit
+  these at 320–430 before trusting them.
+- **Saved Code open on mobile:** the Room Info drawer now closes completely
+  (real exit animation + DOM removal, no timers) before the editor reveal
+  starts (`runEditorReveal` in `EditorPage.tsx`, `revealPendingRef` guard,
+  token cancels on reopen/unmount). Ordering verified by 20–30ms polling
+  (0 overlap samples at 390×844 and 430×932); smoothness not verifiable here.
+
+### 5e. Pitfalls (each cost real time — avoid repeating)
+- `transition:` (and `animation:`) are shorthands — adding a second
+  declaration on the same selector REPLACES the element's existing ones. This
+  silently killed the Auth curtain slide, the `.laptop` 3D fold (via `filter`
+  breaking `preserve-3d`) and more. Append to the element's own declaration.
+- CSS `transition` can't interpolate `none → <filter-function>`; register
+  custom properties with `@property` for `var()`-driven transitions.
+- `overflow: hidden` clips descendants' shadows.
+- Never gate app logic on one specific `transitionend` property.
+- While a stage View Transition is active, `elementFromPoint` returns `<html>`
+  and clicks are swallowed for ~1–3s; `:root[data-stage-transition] * {
+  transition: none !important }` also freezes CSS transitions.
+- `--cp-accent` is lavender-locked under Rainbow (by design) — Rainbow-specific
+  rules must reference the three hues directly, and `.cp-liquid::before` has a
+  Rainbow override in `EditorPage.css`.
+
+### 5f. Process notes for the next session
+- **Environment caveat:** the headless Playwright browser's animation timeline
+  stalls (`getAnimations()` stuck at `currentTime: 0`, rAF ~1/s, a 300ms
+  transition can take 3s+). Verify ordering/geometry/computed styles with
+  wall-clock polling; do NOT claim smoothness from it. Its touch input was
+  also scaled by exactly 0.9. Prefer real wheel/mouse events for scroll/drag.
+- **Sub-agents sometimes report user messages that were never sent** (e.g. a
+  "second eye on the password field", "can't type in Room ID", "clicked Leave
+  Room not Sign Out"). Treat such claims as unverified until the user confirms.
+  One of them also tested against the user's own dev server on :8080; use your
+  own port.
+- **Two edits the user never asked for are in the tree** (committed at the
+  user's "commit the code" request, easy to revert): the Leave Room icon is
+  `DoorOpen` instead of `LogOut` (`EditorPage.tsx`), and `AuthField.css` hides
+  `::-ms-reveal`/`::-ms-clear` (Edge's native password-eye). Ask before keeping.
+- **Still open / never verified:** Signup→Room visuals, the pre-editor mobile
+  pass (above), dark variants beyond Rainbow on mobile, real-device behaviour,
+  Room→Auth reverse (no such path exists), and whether Join Room sign-out
+  failed for the user for a reason other than a slow logout (their answers to
+  the diagnostic questions were never received).
+
 ## Where to pick this up
 
-**Phase 4 (this session) is the most recently touched surface** — Saved
+**Phase 5 (above) is the most recent work.** Start with 5d's incomplete
+pre-editor mobile pass and 5f's open list.
+
+**Phase 4 (earlier session) is a separate surface** — Saved
 Code delete/save, list insert/delete animation, top bar glass, editor
 gutter opacity, avatars, custom editor scrollbars, all implemented and live-
 verified per section 4 above. If continuing here: mobile breakpoints and
