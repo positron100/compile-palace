@@ -238,18 +238,45 @@
   border-radius: 2px;
 }
 
-@media (max-width: 900px) {
+/* Stacked (mobile) layout. Breakpoint and geometry deliberately mirror
+   AuthCard.css's own <=767px block: Auth and Room Join share one transition
+   slot, so below 768px Room must be exactly the Auth stage's 25rem x 44rem
+   (--auth-h) or the Auth -> Room handoff visibly snaps. (It used to stack at
+   900px, so 768-900px measured a 544px Auth stage handing off to a ~731px
+   stacked Room, and at 390px a 704px stage to a 727px Room whose decoy copy
+   was also clipped 23px inside the Auth stage.) Paddings are tightened so the
+   content fits inside 44rem; min-height (not height) so a longer wrap can
+   never clip the form. */
+@media (max-width: 767px) {
+  .room-stage {
+    max-width: 25rem;
+  }
   .room-stage__viewport {
     flex-direction: column;
-    min-height: 0;
+    min-height: 44rem;
   }
   .room-stage__laptop {
-    padding: 1.5rem 1rem 1rem;
+    padding: 1.25rem 1rem 0.5rem;
   }
   .room-stage__laptop .laptop-scene {
     max-width: 14rem;
   }
   .room-stage__form {
-    padding: 1.75rem 1.25rem 2rem;
+    padding: 1.5rem 1.25rem;
+  }
+  .room-form__sub {
+    margin-bottom: 1.25rem;
+  }
+}
+/* Narrow phones: the subtitle wraps to more lines, so give the height back
+   from the laptop instead of growing past the Auth stage's 44rem. */
+@media (max-width: 389px) {
+  .room-stage__laptop .laptop-scene {
+    max-width: 12rem;
+  }
+}
+@media (max-width: 339px) {
+  .room-stage__laptop .laptop-scene {
+    max-width: 10.5rem;
   }
 }

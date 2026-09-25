@@ -756,11 +756,23 @@ item below says what was verified live and what was not.
   ~650px at 390×844, Output `clamp(11rem, 36dvh, 20rem)` expanded / 44px
   collapsed, Room Info drawer (Radix Sheet) with no auto-focus tooltip, People
   show names (`Client.tsx`). Desktop 1280/1440 matched a before-snapshot.
-- **Pre-editor screens (Start / Login / Signup / Join Room): INCOMPLETE.** A
-  fork hit a rate limit mid-run and never reported. Partial CSS edits exist in
-  `AuthCard.css`, `AuthField.css`, `RoomJoinCard.css`, `Index.tsx`, `Auth.tsx`
-  and the mobile-emulation pass was **not** finished or verified — re-audit
-  these at 320–430 before trusting them.
+- **Pre-editor screens (Start / Login / Signup / Join Room): done, verified
+  by layout numbers.** A first fork was rate-limited mid-run (its partial edits
+  in `AuthCard.css`, `AuthField.css`, `Index.tsx`, `Auth.tsx` were reviewed and
+  kept: hover effects gated to `(hover: hover)`, 44px hit areas under
+  `(pointer: coarse)`, 16px inputs ≤767px, `100dvh` wrappers). The finishing
+  pass found Start and Login/Signup had no overflow at 320–834, and that Join
+  Room did not match the Auth stage it hands off from (727px vs 704px tall at
+  390 → a ~12px jump at handoff; up to 56rem wide vs Auth's 25rem cap at
+  480–767; stacked at 768–900 while Auth is side-by-side). Fixed in
+  `RoomJoinCard.css` only: Room stacks at ≤767px (was 900), is capped at 25rem
+  wide with `min-height: 44rem` on phones, and the laptop shrinks only on
+  narrow phones (12rem <390px, 10.5rem <340px). Auth and Room viewports are now
+  identical at 360–834. Desktop 901/1280/1440 unchanged (Room at 1024 not
+  re-measured). **Not verified:** transition smoothness, real coarse-pointer
+  taps, on-screen keyboard, real devices. Test-harness note: the emulated
+  browser reports widths ~1.11× larger unless 0.9× is requested, which produced
+  a false side-by-side result at 767.11px — ignore that artifact.
 - **Saved Code open on mobile:** the Room Info drawer now closes completely
   (real exit animation + DOM removal, no timers) before the editor reveal
   starts (`runEditorReveal` in `EditorPage.tsx`, `revealPendingRef` guard,
@@ -798,16 +810,16 @@ item below says what was verified live and what was not.
   user's "commit the code" request, easy to revert): the Leave Room icon is
   `DoorOpen` instead of `LogOut` (`EditorPage.tsx`), and `AuthField.css` hides
   `::-ms-reveal`/`::-ms-clear` (Edge's native password-eye). Ask before keeping.
-- **Still open / never verified:** Signup→Room visuals, the pre-editor mobile
-  pass (above), dark variants beyond Rainbow on mobile, real-device behaviour,
+- **Still open / never verified:** Signup→Room visuals, dark variants beyond
+  Rainbow on the mobile Editor, real-device behaviour,
   Room→Auth reverse (no such path exists), and whether Join Room sign-out
   failed for the user for a reason other than a slow logout (their answers to
   the diagnostic questions were never received).
 
 ## Where to pick this up
 
-**Phase 5 (above) is the most recent work.** Start with 5d's incomplete
-pre-editor mobile pass and 5f's open list.
+**Phase 5 (above) is the most recent work.** Both mobile passes (Editor and
+pre-editor) are done; start with 5f's open list (mostly real-device checks).
 
 **Phase 4 (earlier session) is a separate surface** — Saved
 Code delete/save, list insert/delete animation, top bar glass, editor
