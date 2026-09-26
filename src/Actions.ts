@@ -6,7 +6,8 @@ const ACTIONS = {
   SYNC_CODE: 'sync-code',
   DISCONNECTED: 'disconnected',
   LEAVE: 'leave',
-  
+  CURSOR_CHANGE: 'cursor-change',
+
   // Additional useful actions for our implementation
   SYNC_REQUEST: 'sync-request',
   SYNC_RESPONSE: 'sync-response',

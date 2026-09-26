@@ -59,8 +59,10 @@ const Index = () => {
       .maybeSingle()
       .then(({ data }) => {
         setProfile(data);
+        // Prefill only — never overwrite what the user already typed (the
+        // profile can resolve after typing, or re-run on an auth refresh).
         if (data?.name) {
-          setUsername(data.name);
+          setUsername((typed) => typed || data.name);
         }
       });
   }, [user]);

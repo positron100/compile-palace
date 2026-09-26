@@ -2,6 +2,7 @@
 import React, { useRef, useCallback, memo, useEffect, forwardRef, useImperativeHandle } from "react";
 import { useEditorSetup } from "../hooks/useEditorSetup";
 import { useCollaboration } from "../hooks/useCollaboration";
+import { useRemoteCursors, type RemoteParticipant } from "../hooks/useRemoteCursors";
 import { getRoomCode } from "../socket";
 
 interface EditorProps {
@@ -14,6 +15,8 @@ interface EditorProps {
   };
   username?: string;
   initialCode?: string | null;
+  /** Room participants (from `joined`) — names, colors and last known cursors for remote-cursor rendering. */
+  participants?: RemoteParticipant[];
 }
 
 export interface EditorHandle {
@@ -28,7 +31,8 @@ const Editor = memo(forwardRef<EditorHandle, EditorProps>(({
   onCodeChange,
   language,
   username = 'Anonymous',
-  initialCode = null
+  initialCode = null,
+  participants
 }, ref) => {
   const codeRef = useRef<string>(getRoomCode(roomId) || "");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -55,6 +59,9 @@ const Editor = memo(forwardRef<EditorHandle, EditorProps>(({
     textareaRef
   });
   
+  // Other participants' carets (bookmark widgets; they survive peer setValue via beforeChange/change)
+  useRemoteCursors({ socketRef, editorRef, ignoreChangeRef, roomId, participants });
+
   // Setup collaboration features
   const { handleRemoteChange, requestCodeSync } = useCollaboration({
     socketRef,
@@ -62,6 +69,7 @@ const Editor = memo(forwardRef<EditorHandle, EditorProps>(({
     username,
     editorRef,
     ignoreChangeRef,
+    initializedRef,
     onCodeChange: handleCodeChange
   });
   
@@ -69,7 +77,13 @@ const Editor = memo(forwardRef<EditorHandle, EditorProps>(({
   // arrives from the database (initialCode resolves asynchronously after mount)
   useEffect(() => {
     const codeToApply = initialCode || getRoomCode(roomId);
-    if (codeToApply && editorRef.current && !initializedRef.current) {
+    // This effect re-runs on every render (onCodeChange is an inline arrow up
+    // the tree). If the editor already has content — typed locally, or filled
+    // by a peer's code-change — seeding again would overwrite it with the last
+    // synced snapshot and lose unsent edits. Seed an empty editor only.
+    if (editorRef.current && !initializedRef.current && editorRef.current.getValue() !== "") {
+      initializedRef.current = true;
+    } else if (codeToApply && editorRef.current && !initializedRef.current) {
       // Set flag to ignore the change event this will trigger
       ignoreChangeRef.current = true;
       editorRef.current.setValue(codeToApply);

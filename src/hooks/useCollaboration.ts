@@ -11,6 +11,8 @@ interface UseCollaborationProps {
   username: string;
   editorRef: React.MutableRefObject<any>;
   ignoreChangeRef: React.MutableRefObject<boolean>;
+  /** Editor.tsx's "initial content already decided" flag. */
+  initializedRef?: React.MutableRefObject<boolean>;
   onCodeChange: (code: string) => void;
 }
 
@@ -20,6 +22,7 @@ export const useCollaboration = ({
   username,
   editorRef,
   ignoreChangeRef,
+  initializedRef,
   onCodeChange
 }: UseCollaborationProps) => {
   const previousCodeRef = useRef<string>("");
@@ -27,6 +30,11 @@ export const useCollaboration = ({
   const THROTTLE_MS = 500;
   const syncAttemptRef = useRef<number>(0);
   const MAX_SYNC_ATTEMPTS = 3;
+  // The subscribe effect re-runs whenever a dependency's identity changes
+  // (e.g. EditorPage's inline onCodeChange, every render). Re-applying the
+  // stored code on each re-run replaced the user's unsent local edits with the
+  // last-synced snapshot, so it must happen once per mount.
+  const storedCodeAppliedRef = useRef(false);
   
   // Update roomId ref when prop changes
   useEffect(() => {
@@ -39,12 +47,23 @@ export const useCollaboration = ({
 
   // Handle remote code changes
   const handleRemoteChange = useCallback((data: { code: string, author?: string }) => {
-    if (!editorRef.current || !data.code) {
+    // "" is a valid document (the peer cleared the editor) — only reject
+    // payloads that aren't strings at all.
+    if (!editorRef.current || typeof data.code !== "string") {
       return;
     }
-    
-    // Skip if the code is exactly the same (prevents unnecessary updates)
-    if (data.code === previousCodeRef.current) {
+
+    // Any code from the room (even one equal to what's shown) is newer than
+    // the database copy Editor.tsx seeds asynchronously; without this a late
+    // stale seed overwrote an authoritative "" snapshot on rejoin.
+    if (initializedRef) initializedRef.current = true;
+
+    // Skip only when the editor already shows exactly this text. Comparing to
+    // previousCodeRef instead was wrong: the initial seed (database copy)
+    // is applied with the change handler suppressed, so the ref stays "" and
+    // a peer's "" snapshot looked "unchanged" and left stale text in place.
+    if (data.code === editorRef.current.getValue()) {
+      previousCodeRef.current = data.code;
       return;
     }
     
@@ -88,7 +107,7 @@ export const useCollaboration = ({
         ignoreChangeRef.current = false;
       }, 10);
     }
-  }, [editorRef, ignoreChangeRef, onCodeChange, username]);
+  }, [editorRef, ignoreChangeRef, initializedRef, onCodeChange, username]);
 
   // Handler for sync requests
   const handleSyncRequest = useCallback((data: any) => {
@@ -156,10 +175,13 @@ export const useCollaboration = ({
     // Request initial code sync when joining with retry mechanism
     requestCodeSync();
     
-    // Apply any stored code from local storage
-    const storedCode = getRoomCode(roomIdRef.current);
-    if (storedCode) {
-      handleRemoteChange({ code: storedCode, author: 'system' });
+    // Apply any stored code from local storage (once — see above)
+    if (!storedCodeAppliedRef.current) {
+      storedCodeAppliedRef.current = true;
+      const storedCode = getRoomCode(roomIdRef.current);
+      if (storedCode) {
+        handleRemoteChange({ code: storedCode, author: 'system' });
+      }
     }
     
     // Cleanup event listeners when component unmounts or roomId changes
@@ -190,24 +212,25 @@ export const useCollaboration = ({
     }, THROTTLE_MS);
     
     // Handle editor changes
-    const handleEditorChange = (instance: any, changes: any) => {
+    const handleEditorChange = (instance: any) => {
       // Exit early if we should ignore this change (from remote update)
       if (ignoreChangeRef.current) {
         return;
       }
 
-      const { origin } = changes;
+      // Every non-remote change is a local edit. An origin allowlist
+      // ("input" | "+input" | "+delete") silently dropped paste, cut, undo,
+      // redo and setValue (opening Saved Code), so peers diverged until the
+      // next typed edit. Remote applies and the initial seed set
+      // ignoreChangeRef above, so nothing echoes back.
       const code = instance.getValue();
-      
-      // Only handle local user input
-      if (origin === "input" || origin === "+input" || origin === "+delete") {
-        // Update parent component
-        onCodeChange(code);
-        previousCodeRef.current = code;
-        
-        // Send code change to other clients
-        sendCodeChange(code);
-      }
+
+      // Update parent component
+      onCodeChange(code);
+      previousCodeRef.current = code;
+
+      // Send code change to other clients
+      sendCodeChange(code);
     };
     
     // Add change handler to editor
@@ -216,7 +239,9 @@ export const useCollaboration = ({
     // Cleanup
     return () => {
       editorRef.current?.off("change", handleEditorChange);
-      sendCodeChange.cancel();
+      // Flush, don't cancel: this effect re-runs on re-renders, and cancelling
+      // dropped the last edit if one landed inside the 500ms debounce window.
+      sendCodeChange.flush();
     };
   }, [editorRef, ignoreChangeRef, onCodeChange, roomIdRef, socketRef, username, THROTTLE_MS]);
 

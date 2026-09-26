@@ -545,6 +545,23 @@
   opacity: 1;
   pointer-events: auto;
 }
+/* The base rule above hardcodes a LIGHT material (white @ 0.38 + a white
+   inset highlight) and never read the dark glass tokens, so in dark mode the
+   floating panel stayed a pale slab while everything else went dark. Same
+   dark navy the other glass surfaces use (--glass-secondary-*: border and
+   shadow already come from tokens), plus the editor surface's faint theme
+   accent wash so each theme's atmosphere still shows through. Alpha is higher
+   than the token's 0.45 because this panel sits directly over code text and
+   its 2px blur doesn't smear what's behind it — 0.45 let the code read
+   through the panel's own text. Specificity (.dark .editor-panel) beats the
+   base rule, so no !important. */
+.dark .editor-panel {
+  background-color: hsl(230 35% 14% / 0.72);
+  background-image: linear-gradient(180deg, hsl(var(--cp-accent) / 0.08), transparent 40%);
+  backdrop-filter: blur(6px) saturate(1.3);
+  -webkit-backdrop-filter: blur(6px) saturate(1.3);
+  box-shadow: var(--glass-secondary-shadow), inset 0 1px 0 hsl(0 0% 100% / 0.07);
+}
 @media (prefers-reduced-motion: reduce) {
   .editor-panel {
     transition-duration: 0.01ms !important;
@@ -1370,7 +1387,7 @@
   color: hsl(var(--cp-accent-deep)) !important;
 }
 .editor-surface .CodeMirror-cursor {
-  border-left: 1.5px solid hsl(var(--cp-accent-deep)) !important;
+  border-left: 2.5px solid hsl(var(--cp-accent-deep)) !important;
 }
 .editor-surface .CodeMirror-selected {
   background: hsl(var(--cp-accent) / 0.18) !important;
@@ -1432,7 +1449,31 @@
   color: hsl(225 12% 50%) !important;
 }
 .dark .editor-surface .CodeMirror-cursor {
-  border-left: 1.5px solid hsl(var(--cp-accent)) !important;
+  border-left: 2.5px solid hsl(var(--cp-accent)) !important;
+}
+
+/* Breathing caret. CodeMirror 5 blinks by toggling an inline `visibility` on
+   div.CodeMirror-cursors from JS; a stylesheet !important beats a
+   non-important inline style, so while focused the container is pinned
+   visible and the caret itself does a slow scaleY/opacity pulse instead.
+   Vertical scale only, about the caret's own centre: the 1.5px border and
+   the insertion x-position never change, so it can't drift. CodeMirror
+   rebuilds the cursor element on every selection/typing update, which
+   restarts the animation at full size — solid while typing, breathing when
+   idle. transform/opacity only, so it stays on the compositor. Reduced
+   motion leaves CodeMirror's own blink untouched (rules are gated). */
+@keyframes cp-caret-breathe {
+  0%, 100% { transform: scaleY(1); opacity: 1; }
+  50% { transform: scaleY(0.3); opacity: 0.4; }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .editor-surface .CodeMirror-focused div.CodeMirror-cursors {
+    visibility: visible !important;
+  }
+  .editor-surface .CodeMirror-focused .CodeMirror-cursor {
+    transform-origin: 50% 50%;
+    animation: cp-caret-breathe 1.4s cubic-bezier(0.45, 0, 0.55, 1) infinite;
+  }
 }
 .dark .editor-surface .CodeMirror-selected {
   background: hsl(var(--cp-accent) / 0.28) !important;
@@ -2049,5 +2090,232 @@
     bottom: 0.75rem;
     width: var(--output-dim);
     height: auto;
+  }
+}
+
+/* ==========================================================================
+   Remote cursors (useRemoteCursors.ts). Other participants' carets are
+   zero-width CodeMirror bookmark widgets, so they live in the document's own
+   coordinate system and scroll with the code. Their own classes only — the
+   local caret (.CodeMirror-cursor, breathing animation above) is untouched.
+   Palette: the server hands each room member the lowest unused index, so no
+   two members share a color. Size MUST match PALETTE_SIZE (backend server.js)
+   and CURSOR_PALETTE_SIZE (useRemoteCursors.ts).
+   ========================================================================== */
+:root {
+  --cp-remote-cursor-0: 355 78% 52%;
+  --cp-remote-cursor-1: 24 92% 50%;
+  --cp-remote-cursor-2: 44 94% 44%;
+  --cp-remote-cursor-3: 96 58% 38%;
+  --cp-remote-cursor-4: 152 62% 34%;
+  --cp-remote-cursor-5: 176 72% 33%;
+  --cp-remote-cursor-6: 196 88% 40%;
+  --cp-remote-cursor-7: 216 88% 54%;
+  --cp-remote-cursor-8: 258 78% 60%;
+  --cp-remote-cursor-9: 290 66% 50%;
+  --cp-remote-cursor-10: 322 76% 52%;
+  --cp-remote-cursor-11: 18 32% 40%;
+}
+.dark {
+  --cp-remote-cursor-0: 355 86% 68%;
+  --cp-remote-cursor-1: 24 95% 62%;
+  --cp-remote-cursor-2: 45 96% 58%;
+  --cp-remote-cursor-3: 96 62% 56%;
+  --cp-remote-cursor-4: 152 60% 52%;
+  --cp-remote-cursor-5: 176 65% 52%;
+  --cp-remote-cursor-6: 196 90% 58%;
+  --cp-remote-cursor-7: 216 92% 68%;
+  --cp-remote-cursor-8: 258 88% 72%;
+  --cp-remote-cursor-9: 290 72% 68%;
+  --cp-remote-cursor-10: 322 82% 68%;
+  --cp-remote-cursor-11: 18 40% 62%;
+}
+
+.editor-surface .cp-remote-cursor {
+  position: relative;
+  display: inline-block;
+  width: 0;
+  /* height is set inline to CodeMirror's defaultTextHeight() */
+  vertical-align: top;
+  z-index: 4;
+}
+.editor-surface .cp-remote-cursor__bar {
+  position: absolute;
+  left: -1px;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  border-radius: 1px;
+  background: hsl(var(--cursor-color));
+  box-shadow: 0 0 5px hsl(var(--cursor-color) / 0.45);
+  pointer-events: none;
+}
+/* Hover target: wider than the 2px bar, but still a thin strip so it barely
+   competes with clicking into the text next to it. */
+.editor-surface .cp-remote-cursor::before {
+  content: "";
+  position: absolute;
+  left: -5px;
+  width: 10px;
+  top: 0;
+  bottom: 0;
+}
+.editor-surface .cp-remote-cursor__pill {
+  position: absolute;
+  left: -6px;
+  bottom: calc(100% + 6px);
+  max-width: 14rem;
+  padding: 2px 10px 2px 8px;
+  border-radius: 9999px;
+  font: 500 11px/1.5 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  letter-spacing: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: hsl(var(--foreground));
+  background: var(--glass-secondary-bg);
+  border: 1px solid var(--glass-secondary-border);
+  box-shadow: var(--glass-secondary-shadow), inset 0 1px 0 hsl(0 0% 100% / 0.18);
+  backdrop-filter: blur(calc(var(--glass-blur) * 0.6)) saturate(1.4);
+  -webkit-backdrop-filter: blur(calc(var(--glass-blur) * 0.6)) saturate(1.4);
+  opacity: 0;
+  transform: translateY(4px) scale(0.96);
+  transform-origin: left bottom;
+  transition: opacity 160ms cubic-bezier(0.22, 1, 0.36, 1), transform 160ms cubic-bezier(0.22, 1, 0.36, 1);
+  pointer-events: none;
+}
+/* Participant color as a small accent dot, not a colored fill. */
+.editor-surface .cp-remote-cursor__pill::before {
+  content: "";
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-right: 6px;
+  border-radius: 50%;
+  vertical-align: 1px;
+  background: hsl(var(--cursor-color));
+  box-shadow: 0 0 4px hsl(var(--cursor-color) / 0.55);
+}
+.editor-surface .cp-remote-cursor:hover .cp-remote-cursor__pill {
+  opacity: 1;
+  transform: none;
+}
+/* Near the top edge: open downward instead of being clipped by the scroller. */
+.editor-surface .cp-remote-cursor[data-flip="below"] .cp-remote-cursor__pill {
+  bottom: auto;
+  top: calc(100% + 6px);
+  transform: translateY(-4px) scale(0.96);
+  transform-origin: left top;
+}
+.editor-surface .cp-remote-cursor[data-flip="below"]:hover .cp-remote-cursor__pill {
+  transform: none;
+}
+/* Near the right edge: anchor the pill's right side to the caret. */
+.editor-surface .cp-remote-cursor[data-align="end"] .cp-remote-cursor__pill {
+  left: auto;
+  right: -6px;
+  transform-origin: right bottom;
+}
+.editor-surface .cp-remote-cursor[data-align="end"][data-flip="below"] .cp-remote-cursor__pill {
+  transform-origin: right top;
+}
+/* Later lines paint over an earlier line's overflow; lift the hovered one. */
+.editor-surface .CodeMirror-line:has(.cp-remote-cursor:hover) {
+  z-index: 5;
+}
+@media (hover: none) {
+  /* No hover on touch: the caret still renders, the name pill just isn't hover-triggered. */
+  .editor-surface .cp-remote-cursor__pill,
+  .editor-surface .cp-remote-cursor::before {
+    display: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .editor-surface .cp-remote-cursor__pill,
+  .editor-surface .cp-remote-cursor[data-flip="below"] .cp-remote-cursor__pill {
+    transform: none;
+    transition: opacity 120ms linear;
+  }
+}
+
+/* --- Copy → Copied micro-interaction (CopyIconSwap / CopyLabel) ---
+   Both icons share one fixed-size grid cell, so the button never resizes.
+   The idle icon shrinks/fades out while the check scales in and its stroke
+   draws (dasharray covers the ~23px path with headroom). Tokens only: the
+   check takes the theme accent (deeper shade on light glass, the brightened
+   accent on dark). A press nudges just the icon — the button itself carries
+   the liquid-glass magnetic transform, which :active must not fight. */
+.cp-copy-icon {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  transition: transform 140ms var(--cp-ease-standard, cubic-bezier(0.16, 1, 0.3, 1));
+}
+.cp-copy-icon > svg {
+  grid-area: 1 / 1;
+  transition: opacity 180ms var(--cp-ease-standard, cubic-bezier(0.16, 1, 0.3, 1)),
+    transform 220ms var(--cp-ease-standard, cubic-bezier(0.16, 1, 0.3, 1));
+}
+.cp-copy-icon__idle {
+  opacity: 1;
+  transform: scale(1);
+}
+.cp-copy-icon__check {
+  opacity: 0;
+  transform: scale(0.6);
+  color: hsl(var(--cp-accent-deep));
+}
+.dark .cp-copy-icon__check {
+  color: hsl(var(--cp-accent));
+}
+.cp-copy-icon__check path {
+  stroke-dasharray: 26;
+  stroke-dashoffset: 26;
+  transition: stroke-dashoffset 260ms var(--cp-ease-standard, cubic-bezier(0.16, 1, 0.3, 1)) 70ms;
+}
+.cp-copy-icon[data-copied] .cp-copy-icon__idle {
+  opacity: 0;
+  transform: scale(0.6);
+}
+.cp-copy-icon[data-copied] .cp-copy-icon__check {
+  opacity: 1;
+  transform: scale(1);
+}
+.cp-copy-icon[data-copied] .cp-copy-icon__check path {
+  stroke-dashoffset: 0;
+}
+.cp-liquid:active .cp-copy-icon {
+  transform: scale(0.86);
+}
+/* The tooltip renders in a Radix Portal on <body>, outside .editor-shell where
+   --cp-ease-standard is defined — without the fallback the whole animation
+   declaration is invalid there and silently computes to `none`. */
+.cp-copy-label {
+  display: inline-block;
+  animation: cp-copy-label-in 180ms var(--cp-ease-standard, cubic-bezier(0.16, 1, 0.3, 1)) both;
+}
+@keyframes cp-copy-label-in {
+  from { opacity: 0; transform: translateY(3px) scale(0.97); }
+  to { opacity: 1; transform: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .cp-copy-icon,
+  .cp-copy-icon > svg {
+    transition: opacity 120ms linear;
+  }
+  .cp-copy-icon__idle,
+  .cp-copy-icon__check,
+  .cp-copy-icon[data-copied] .cp-copy-icon__idle,
+  .cp-copy-icon[data-copied] .cp-copy-icon__check,
+  .cp-liquid:active .cp-copy-icon {
+    transform: none;
+  }
+  .cp-copy-icon__check path {
+    stroke-dasharray: none;
+    stroke-dashoffset: 0;
+    transition: none;
+  }
+  .cp-copy-label {
+    animation: none;
   }
 }

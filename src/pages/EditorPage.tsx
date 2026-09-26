@@ -17,6 +17,8 @@ import { toast } from "sonner";
 import { submitCode, languageOptions } from "../services/compileService";
 import { Play, Copy, LogOut, DoorOpen, Users, Menu, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Check, Loader2, Pin, PinOff, PanelBottom, PanelRight, WandSparkles, Hash, Save } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { CopyIconSwap, CopyLabel } from "@/components/CopyIconSwap";
+import { useCopyFeedback } from "@/hooks/use-copy-feedback";
 import { Sheet, SheetContent, SheetTitle, SheetDescription } from "@/components/ui/sheet";
 import { LanguageDropdown } from "@/components/editor/LanguageDropdown";
 import { ThemeSelector } from "@/components/editor/ThemeSelector";
@@ -40,6 +42,40 @@ import { debounce } from 'lodash';
 import { useLiquidGlass } from "@/hooks/use-liquid-glass";
 import { BrandLogo } from "@/components/BrandLogo";
 import "./EditorPage.css";
+
+const sortPeople = (list: any[] = []) =>
+  list.filter((c) => c?.username).sort((a, b) => a.username.localeCompare(b.username));
+
+// Module scope on purpose: defined inside EditorPage it was a NEW component
+// type every render, so any state change (e.g. copy feedback) remounted every
+// button — dropping keyboard focus and restarting icon transitions from
+// their end state.
+// forwardRef so ModernTooltip's Radix trigger (asChild) can attach its own
+// ref for positioning alongside the magnetic-hover ref this already uses —
+// without it, Radix logs "Function components cannot be given refs" and
+// can't measure the trigger to place the tooltip.
+const LiquidButton = React.forwardRef<HTMLButtonElement, React.ButtonHTMLAttributes<HTMLButtonElement>>(
+  ({ className = "", children, ...props }, forwardedRef) => {
+    const liquid = useLiquidGlass<HTMLButtonElement>({ strength: 4 });
+    return (
+      <button
+        ref={(node) => {
+          liquid.ref.current = node;
+          if (typeof forwardedRef === "function") forwardedRef(node);
+          else if (forwardedRef) forwardedRef.current = node;
+        }}
+        type="button"
+        onMouseMove={liquid.onMouseMove}
+        onMouseLeave={liquid.onMouseLeave}
+        className={`cp-liquid ${className}`}
+        {...props}
+      >
+        {children}
+      </button>
+    );
+  }
+);
+LiquidButton.displayName = "LiquidButton";
 
 function EditorPage() {
   const socketRef = useRef(null);
@@ -84,8 +120,8 @@ function EditorPage() {
   const [connectionStatus, setConnectionStatus] = useState("Connecting...");
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarMode, setSidebarMode] = useState<"normal" | "floating">("normal");
-  const [roomIdCopied, setRoomIdCopied] = useState(false);
-  const [codeCopied, setCodeCopied] = useState(false);
+  const roomIdCopy = useCopyFeedback();
+  const codeCopy = useCopyFeedback();
   const [runJustSucceeded, setRunJustSucceeded] = useState(false);
   const [outputLayout, setOutputLayout] = useState<"bottom" | "right">("bottom");
   const [outputExpanded, setOutputExpanded] = useState(false);
@@ -111,11 +147,11 @@ function EditorPage() {
     }))
   ).current;
 
-  const username = profile?.name || location.state?.username || user?.email || "Anonymous";
-  const [userCount, setUserCount] = useState(1);
-  
-  const lastClientsUpdateRef = useRef(Date.now());
-  const clientsUpdateThrottleMs = 2000;
+  // Room display name: the name typed on Join Room wins. The account/profile
+  // name is only a fallback (e.g. no router state). Putting the profile first
+  // made this value flip when the profile finished loading, which tore down
+  // and rejoined the socket under the account name.
+  const username = location.state?.username || profile?.name || user?.email || "Anonymous";
 
   // Fetch profile
   useEffect(() => {
@@ -136,9 +172,9 @@ function EditorPage() {
   useEffect(() => {
     if (user && roomId && profile && !hasJoinedRef.current) {
       hasJoinedRef.current = true;
-      addParticipantToRoom(roomId, user.id, profile.name);
+      addParticipantToRoom(roomId, user.id, username);
     }
-  }, [user, roomId, profile]);
+  }, [user, roomId, profile, username]);
 
   // Load existing room code from database
   useEffect(() => {
@@ -188,96 +224,50 @@ function EditorPage() {
   // Debounced save function
   const debouncedSave = useCallback(
     debounce((code: string) => {
-      if (roomId && user && code) {
+      // "" is a valid document: skipping it left the last non-empty text in
+      // the database, which a rejoining user then loaded as the room's code.
+      if (roomId && user && typeof code === "string") {
         saveRoomToDatabase(roomId, code, language.name);
       }
     }, 3000),
     [roomId, user, language]
   );
 
-  const updateClientsList = useCallback((newClients = [], append = false) => {
-    const now = Date.now();
-    if (now - lastClientsUpdateRef.current < clientsUpdateThrottleMs) {
-      return;
-    }
-    
-    lastClientsUpdateRef.current = now;
-    
-    setClients(prevClients => {
-      let updatedClients = append ? [...prevClients] : [];
-      
-      newClients.forEach(newClient => {
-        if (!newClient.username) return;
-        
-        const existingClientIndex = updatedClients.findIndex(
-          client => client.username === newClient.username
-        );
-        
-        if (existingClientIndex >= 0) {
-          updatedClients[existingClientIndex] = {
-            ...updatedClients[existingClientIndex],
-            ...newClient,
-            lastSeen: now
-          };
-        } else {
-          updatedClients.push({
-            ...newClient,
-            lastSeen: now
-          });
-        }
-      });
-      
-      const currentUserExists = updatedClients.some(
-        client => client.username === username
-      );
-      
-      if (!currentUserExists) {
-        updatedClients.push({ 
-          socketId: 'local-user', 
-          username: username,
-          lastSeen: now
-        });
-      }
-      
-      updatedClients.sort((a, b) => a.username.localeCompare(b.username));
-      
-      // Update user count when clients change
-      setUserCount(updatedClients.length);
-      
-      return updatedClients;
-    });
-  }, [username]);
-
   // Initialize socket connection
   useEffect(() => {
     if (!roomId) return;
-    
+
     setConnectionStatus("Connecting to server...");
-    
+
     try {
       // Initialize Socket.IO connection
       const socket = initSocket();
       socketRef.current = socket;
-      
-      setSocketConnected(true);
-      setConnectionStatus("Connected to server");
-      
-      // Handle socket connection events
-      socket.on('connect', () => {
+
+      setSocketConnected(socket.connected);
+      setConnectionStatus(socket.connected ? "Connected" : "Connecting to server...");
+
+      const join = () => {
         setSocketConnected(true);
         setSocketError(false);
         setConnectionStatus("Connected");
-        
+
         // Join room once connected
         socket.emit(ACTIONS.JOIN, {
           roomId,
           username
         });
-        
+
         // Track user in local service
         userService.trackUserPresence(roomId, username);
-      });
-      
+      };
+
+      // Handle socket connection events (listeners are attached before any
+      // join is emitted; a socket that is already connected never fires
+      // 'connect' again, so join right away in that case)
+      socket.on('connect', join);
+      if (socket.connected) join();
+
       socket.on('connect_error', (err) => {
         setSocketError(true);
         setConnectionStatus("Connection failed");
@@ -291,23 +281,19 @@ function EditorPage() {
       
       // Handle room events
       socket.on(ACTIONS.JOINED, ({ clients, username: joinedUser, socketId }) => {
-        if (joinedUser !== username) {
+        // By socket, not name: two people may share a display name.
+        if (socketId !== socket.id) {
           toast.success(`${joinedUser} joined the room`);
         }
         
-        updateClientsList(clients);
-        setUserCount(clients.length);
+        // The server's list is the whole room (joiner included) — replace,
+        // don't merge, so every JOINED self-heals reconnects and refreshes.
+        setClients(sortPeople(clients));
       });
-      
+
       socket.on(ACTIONS.DISCONNECTED, ({ socketId, username: leftUser }) => {
         toast.info(`${leftUser} left the room`);
-        
-        setClients(prev => {
-          const updatedClients = prev.filter(client => client.socketId !== socketId);
-          // Update user count when a user leaves
-          setUserCount(updatedClients.length);
-          return updatedClients;
-        });
+        setClients(prev => prev.filter(client => client.socketId !== socketId));
       });
       
       setInitialized(true);
@@ -329,12 +315,12 @@ function EditorPage() {
       // Try to get users from local service
       const roomUsers = userService.getRoomUsers(roomId);
       if (roomUsers.length > 0) {
-        updateClientsList(roomUsers);
+        setClients(sortPeople(roomUsers));
       }
-      
+
       return () => {};
     }
-  }, [roomId, username, updateClientsList]);
+  }, [roomId, username]);
 
   useEffect(() => {
     if (initialized && !user && !authLoading && !signingOut) {
@@ -550,23 +536,11 @@ function EditorPage() {
   };
 
   const copyRoomId = async () => {
-    try {
-      await navigator.clipboard.writeText(roomId || "");
-      setRoomIdCopied(true);
-      setTimeout(() => setRoomIdCopied(false), 1500);
-    } catch (err) {
-      toast.error("Could not copy Room ID");
-    }
+    if (!(await roomIdCopy.copy(roomId || ""))) toast.error("Could not copy Room ID");
   };
 
   const copyCode = async () => {
-    try {
-      await navigator.clipboard.writeText(codeRef.current || "");
-      setCodeCopied(true);
-      setTimeout(() => setCodeCopied(false), 1500);
-    } catch (err) {
-      toast.error("Could not copy code");
-    }
+    if (!(await codeCopy.copy(codeRef.current || ""))) toast.error("Could not copy code");
   };
 
   // Socket disconnect + code save/participant cleanup shared by "Leave Room"
@@ -632,32 +606,6 @@ function EditorPage() {
   // copy/leave/sign-out control and output utility renders through this so
   // they all share one interaction implementation (section 5's "do not
   // create separate styles per control").
-  // forwardRef so ModernTooltip's Radix trigger (asChild) can attach its own
-  // ref for positioning alongside the magnetic-hover ref this already uses —
-  // without it, Radix logs "Function components cannot be given refs" and
-  // can't measure the trigger to place the tooltip.
-  const LiquidButton = React.forwardRef<HTMLButtonElement, React.ButtonHTMLAttributes<HTMLButtonElement>>(
-    ({ className = "", children, ...props }, forwardedRef) => {
-      const liquid = useLiquidGlass<HTMLButtonElement>({ strength: 4 });
-      return (
-        <button
-          ref={(node) => {
-            liquid.ref.current = node;
-            if (typeof forwardedRef === "function") forwardedRef(node);
-            else if (forwardedRef) forwardedRef.current = node;
-          }}
-          type="button"
-          onMouseMove={liquid.onMouseMove}
-          onMouseLeave={liquid.onMouseLeave}
-          className={`cp-liquid ${className}`}
-          {...props}
-        >
-          {children}
-        </button>
-      );
-    }
-  );
-
   // Collapsed icon content — the permanent floating-mode rail, AND normal
   // mode's own collapsed state (same icons, same behavior, either context).
   const RailIcons = () => (
@@ -685,9 +633,9 @@ function EditorPage() {
       </div>
       <div className="editor-rail__section" style={{ flex: 1 }} />
       <div className="editor-rail__section editor-rail__actions">
-        <ModernTooltip content="Copy Room ID" side="right">
+        <ModernTooltip content={<CopyLabel copied={roomIdCopy.copied} idle="Copy Room ID" />} side="right">
           <LiquidButton className="editor-rail__icon-btn" onClick={copyRoomId} aria-label="Copy room ID">
-            {roomIdCopied ? <Check size={15} /> : <Hash size={15} />}
+            <CopyIconSwap copied={roomIdCopy.copied} icon={Hash} size={15} />
           </LiquidButton>
         </ModernTooltip>
         <ModernTooltip content="Leave Room" side="right">
@@ -763,14 +711,14 @@ function EditorPage() {
             <span className={`editor-chip__dot ${connectionDotClass}`} />
             <span className="opacity-70 text-xs">{connectionLabel}</span>
           </span>
-          <ModernTooltip content="Copy Room ID">
+          <ModernTooltip content={<CopyLabel copied={roomIdCopy.copied} idle="Copy Room ID" />}>
             <LiquidButton
               className="editor-copy-btn"
               style={{ width: "auto", margin: 0, height: "1.75rem", padding: "0 0.625rem" }}
               onClick={copyRoomId}
               aria-label="Copy room ID"
             >
-              {roomIdCopied ? <Check size={13} /> : <Hash size={13} />}
+              <CopyIconSwap copied={roomIdCopy.copied} icon={Hash} size={13} />
             </LiquidButton>
           </ModernTooltip>
         </div>
@@ -785,7 +733,7 @@ function EditorPage() {
                 key={client.socketId || client.username}
                 username={client.username}
                 socketId={client.socketId}
-                isYou={client.username === username}
+                isYou={client.socketId === socketRef.current?.id}
               />
             ))}
           </div>
@@ -913,17 +861,17 @@ function EditorPage() {
             </span>
             <span className="editor-chip editor-chip--quiet">
               <Users size={13} className="opacity-70" />
-              {userCount}
+              {clients.length}
             </span>
           </div>
           <div className="editor-topbar__group">
-            <ModernTooltip content="Copy Code">
+            <ModernTooltip content={<CopyLabel copied={codeCopy.copied} idle="Copy Code" />}>
               <LiquidButton
                 className="editor-rail__icon-btn"
                 onClick={copyCode}
                 aria-label="Copy code"
               >
-                {codeCopied ? <Check size={15} /> : <Copy size={15} />}
+                <CopyIconSwap copied={codeCopy.copied} icon={Copy} size={15} />
               </LiquidButton>
             </ModernTooltip>
             {currentSavedCodeId ? (
@@ -1014,7 +962,7 @@ function EditorPage() {
           </>
         ) : (
           <aside className="editor-sidebar-normal glass-secondary hidden md:flex" data-collapsed={!sidebarOpen}>
-            {sidebarOpen ? SidebarPanelContent({ showControls: true }) : <RailIcons />}
+            {sidebarOpen ? SidebarPanelContent({ showControls: true }) : RailIcons()}
           </aside>
         )}
 
@@ -1051,6 +999,7 @@ function EditorPage() {
               language={language}
               username={username}
               initialCode={initialCode}
+              participants={clients}
               onCodeChange={(code) => {
                 codeRef.current = code;
                 debouncedSave(code);

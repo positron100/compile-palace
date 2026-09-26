@@ -1,9 +1,11 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { X, Terminal, ChevronUp, CheckCircle2, XCircle, Loader2, AlertTriangle, Copy, Check } from 'lucide-react';
+import { X, Terminal, ChevronUp, CheckCircle2, XCircle, Loader2, AlertTriangle, Copy } from 'lucide-react';
 import OutputSection from './OutputSection';
 import { useLiquidGlass } from '@/hooks/use-liquid-glass';
 import { ModernTooltip } from './ModernTooltip';
 import { WavLoader } from './WavLoader';
+import { CopyIconSwap, CopyLabel } from './CopyIconSwap';
+import { useCopyFeedback } from '@/hooks/use-copy-feedback';
 
 interface OutputDrawerProps {
   open: boolean;
@@ -161,21 +163,15 @@ const OutputDrawer: React.FC<OutputDrawerProps> = ({
     ? [cleanLanguage || null, outputDetails.time ? `${outputDetails.time}s` : null, outputDetails.memory ? `${outputDetails.memory} KB` : null].filter(Boolean).join('  ·  ')
     : cleanLanguage;
 
-  const [copied, setCopied] = useState(false);
-  const copyOutput = async () => {
+  // A failed write leaves `copied` false and stays silent (OutputDrawer
+  // doesn't otherwise depend on the toast lib) — never a false "Copied".
+  const outputCopy = useCopyFeedback();
+  const copyOutput = () => {
     const parts: string[] = [];
     if (outputDetails?.stdout) parts.push(`Program Output\n${outputDetails.stdout}`);
     if (outputDetails?.compile_output) parts.push(`Compilation Error\n${outputDetails.compile_output}`);
     if (outputDetails?.stderr) parts.push(`stderr\n${outputDetails.stderr}`);
-    try {
-      await navigator.clipboard.writeText(parts.join('\n\n') || '');
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
-    } catch {
-      // Silent — same as the rest of the app's copy actions having no
-      // fallback UI beyond the toast pattern used elsewhere (kept local
-      // here since OutputDrawer doesn't otherwise depend on the toast lib).
-    }
+    void outputCopy.copy(parts.join('\n\n') || '');
   };
 
   return (
@@ -233,12 +229,12 @@ const OutputDrawer: React.FC<OutputDrawerProps> = ({
           )}
           <div className="flex items-center gap-1">
             {expanded && outputDetails && executionState !== 'running' && (
-              <ModernTooltip content="Copy Output">
+              <ModernTooltip content={<CopyLabel copied={outputCopy.copied} idle="Copy Output" />}>
                 <IconButton
                   onClick={(e) => { e.stopPropagation(); copyOutput(); }}
                   aria-label="Copy output"
                 >
-                  {copied ? <Check size={15} /> : <Copy size={15} />}
+                  <CopyIconSwap copied={outputCopy.copied} icon={Copy} size={15} />
                 </IconButton>
               </ModernTooltip>
             )}
