@@ -1,8 +1,10 @@
 # Claude session handover — Compile Palace
 
-**Latest session: 2026-09-23 to 2026-09-25 — see "Phase 5" below (theme/mode
-system, Auth→Room fixes, mobile pass, Saved Code sequencing, several bug
-fixes). Start there if resuming; Phases 1–4 are earlier sessions.** Project
+**Latest sessions: 2026-09-23 to 2026-09-26 — see "Phase 5" (theme/mode
+system, Auth→Room fixes, mobile pass, Saved Code sequencing) and "Phase 6"
+(deployment to Vercel/Render, backend hardening, realtime/sync fixes, remote
+cursors, copy animation) below. Start at Phase 6 if resuming; Phases 1–4 are
+earlier sessions.** Project
 root is now `D:\personal projects\compile-palace` (the `C:\My Programs\...`
 path further down is from the earlier session).
 
@@ -816,10 +818,171 @@ item below says what was verified live and what was not.
   failed for the user for a reason other than a slow logout (their answers to
   the diagnostic questions were never received).
 
+## Phase 6 — Deployment, backend hardening, sync fixes, remote cursors, UI polish (2026-09-25 → 09-26)
+
+Two repos are involved: this frontend and the backend
+`D:\personal projects\code-editor-` (GitHub `positron100/code-editor-`, Render).
+Commits: frontend `ab3f9a5` (Vercel config), `29ba358` (everything below);
+backend `d9c7a2e` (CORS), `87b50fd` (hardening), `328d7f3` (cursors).
+
+### 6a. Deployment
+- **Vercel:** project `compile-palace` (account `positron100`), linked to the
+  GitHub repo so **every push to `main` redeploys**. Production alias
+  `https://compile-palace.vercel.app` (per-deployment URLs 302 behind Vercel's
+  protection; the alias is public). `vercel.json` rewrites everything to
+  `index.html` (BrowserRouter; without it refreshing `/editor/<room>` 404s).
+  `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY` (stored as a *config*
+  var — Vercel demands an explicit type for names containing "KEY") and
+  `VITE_SUPABASE_PROJECT_ID` were set via the CLI. `vercel link` also created
+  `.vercel/` and `.env.local` (both gitignored now).
+- **Render backend:** `https://code-editor-f145.onrender.com`. Push to its
+  `main` redeployed within ~1 min; verified live by a `joined` reply that
+  carries `colorIndex`. Client uses `transports: ['websocket']`, so browser
+  CORS does not apply to it; the CORS allowlist only matters for polling.
+- **Deploy order for protocol changes: backend first.** Added payload fields
+  are ignored by old frontends; a new frontend on an old backend just shows no
+  cursors/colours. This is exactly why remote cursors were "invisible" for a
+  while: the feature existed only in the working tree (`git fetch` +
+  `git log origin/main` proved it — check that before debugging visibility).
+- **Manual, not automatable from here:** Supabase Auth → URL Configuration must
+  list the Vercel URL (signup uses `emailRedirectTo: window.location.origin`);
+  Render Build Command should be `npm ci` (not the old `npm install && npm run
+  build`), Health Check Path `/health`, pin a Node version.
+- `.env` is **still tracked** in this repo (public Supabase values only);
+  the backend untracked its own. History keeps old values either way.
+
+### 6b. Backend audit + hardening (details live in the backend repo/tests)
+- The old server trusted the client: `roomId` was used as the Socket.io room
+  name, so a client could pick **another socket's id as its room** and read/write
+  that user's editor; `sync-code` accepted any target; no validation/limits.
+- Now: rooms are `room:<id>`; `code-change`/`cursor-change` need membership;
+  `sync-code` target must share the sender's room; payload validation
+  (roomId ≤128, username ≤64, code ≤400k chars, 2 MB transport limit); per-socket
+  rate limits (code-change 60/5 s, cursor 200/5 s, separate buckets); duplicate
+  `join` answered to the sender only; one shared `leaveRoom` for
+  leave/disconnect/room switch; in-memory room snapshot replayed to late
+  joiners and dropped when the room empties; `/health`; graceful shutdown;
+  JSON logs; `ALLOWED_ORIGINS` (additive, `*` ignored, trailing slashes
+  stripped); `npm start` = `node server.js`; `express` declared.
+  38 `node:test` tests (`npm run test:server`; the repo has **no node_modules**,
+  run with deps from a scratch install via `NODE_PATH`).
+- **Not done:** socket auth (needs frontend `auth: (cb) => cb({ token })`, an
+  `io.use` verifying the Supabase JWT via JWKS or `getUser`, Render env for the
+  Supabase URL/keys, and a `SOCKET_AUTH=optional` → `required` rollout; there is
+  no rooms table, so authorization can only be "signed in"); a global snapshot
+  memory cap; multi-instance support (needs sticky sessions + the Redis
+  adapter); reconnect keeps the server snapshot over a client's offline edits.
+
+### 6c. Frontend realtime/editor fixes (each root-caused)
+- **People 0 vs top bar 1:** two independent states (`userCount` initial 1,
+  `clients` initial `[]`) and a 2 s throttle whose timer started at mount, so
+  the first `joined` never filled `clients`. Now one list: `joined` replaces
+  `clients` (server list is authoritative); `disconnected` removes by
+  `socketId`; the count is `clients.length`. The local user is in the list
+  ("(You)" matched by `socketId`).
+- **Join name overridden by the profile name:** `EditorPage` used
+  `profile?.name || location.state?.username` and the value changed after the
+  profile loaded, re-running the socket effect (leave + rejoin as the profile
+  name). Order is now typed name → profile name → email; `Index.tsx` only
+  prefills an empty field. Nothing writes the typed name to `profiles`.
+- **Clearing the editor did not propagate / came back on rejoin** (four causes):
+  `!data.code` dropped `""` on receipt (**this was in the deployed build**);
+  `previousCodeRef` was compared instead of the editor's real value (the DB seed
+  is applied with the change handler suppressed, so the ref stayed `""` and a
+  `""` snapshot looked "unchanged"); `debouncedSave` skipped empty text so the DB
+  kept the last non-empty copy; the late DB seed in `Editor.tsx` overwrote the
+  server's `""` snapshot (fixed with an `initializedRef` shared with
+  `useCollaboration`). Also fixed: only `input`/`+input`/`+delete` origins were
+  synced (paste, cut, undo, redo, `setValue` never propagated) and a re-render
+  within the debounce window re-applied a stale snapshot over unsent typing.
+- **Sync model (unchanged):** full-document snapshots, last write wins,
+  ~500 ms latency. **Concurrent edits swap documents** (A prepends + B appends at
+  once: 10/10 runs ended with each browser holding the other's text). Not fixed;
+  the simplest fix is a per-room revision the server uses to pick a winner.
+- `Copy Code` reads `codeRef.current`, a mirror that can lag the editor (the same
+  class of bug that broke Run before `EditorHandle.getValue()`); still open.
+
+### 6d. Remote cursors (frontend `hooks/useRemoteCursors.ts`, `lib/remoteCursorMap.ts`)
+- Event `cursor-change` (`{ line, ch }` up; `{ socketId, line, ch }` to the
+  room). The server assigns `colorIndex` (lowest unused of 12, freed when a
+  member leaves) and includes it plus the last cursor in `joined.clients[]`.
+  Palette = `--cp-remote-cursor-0…11` CSS vars with dark variants in
+  `EditorPage.css`.
+- Rendering: a zero-width CodeMirror bookmark widget per peer
+  (`.cp-remote-cursor`: 2 px bar + hover name pill in the `--glass-secondary-*`
+  material). **CodeMirror's `setValue` — used for every remote document update —
+  clears all bookmarks**, so cursors are re-placed after each apply, with
+  offsets mapped through a prefix/suffix diff (`mapIndexThroughChange`, 9 unit
+  tests: `node --test src/lib/remoteCursorMap.test.mjs`). The owner re-announces
+  its caret ~520 ms after a change (its cursor event beats the debounced
+  document). A joiner receives cursors before the snapshot, so reported positions
+  are remembered and re-placed after the first document apply (otherwise every
+  caret piled up at 1:1).
+- Verified with 2 and 4 real browsers against a **local** backend (positions
+  match `cm.cursorCoords` exactly, distinct colours, leave/close/reload cleanup,
+  clear-all still propagates). **Not observed in production**; the hover fade was
+  only confirmed with transitions disabled (headless clock stalls).
+- Limits: two carets at one position overlap (top one wins hover); the ~10 px
+  hover strip eats clicks there; touch shows the caret but no pill; your own
+  caret still restores to its old line/column when a peer edits above it.
+
+### 6e. UI polish
+- **Breathing local caret** (CSS only, `EditorPage.css` `cp-caret-breathe`):
+  CodeMirror blinks by toggling inline `visibility` on `.CodeMirror-cursors`;
+  a stylesheet `!important` beats it, so while focused the container is pinned
+  visible and the caret does `scaleY(1 → 0.3)` / opacity `1 → 0.4` over 1.4 s
+  (vertical scale about the caret's centre: no horizontal drift, verified).
+  Caret is 2.5 px. Gated by `prefers-reduced-motion: no-preference`; reduced
+  motion gets CodeMirror's native blink back.
+- **Floating Room Info panel in dark mode:** `.editor-panel`'s base rule
+  hardcoded a light material (white @ 0.38); added `.dark .editor-panel`
+  (navy @ 0.72, accent wash, 6 px blur). Contrast 17:1.
+- **Copy → Copied:** `hooks/use-copy-feedback.ts` (copied only after
+  `writeText` succeeds; one restartable 1.6 s timer) + `components/CopyIconSwap.tsx`
+  (icon crossfade, check stroke draw, sr-only live status, tooltip `CopyLabel`)
+  used by Copy Code, both Room ID buttons and Copy Output. **Bug found on the
+  way:** `LiquidButton` was defined *inside* `EditorPage`'s render, so any state
+  change remounted every button (focus lost, transitions restarted) — it is now
+  module-level, and `RailIcons` is called as a function (`RailIcons()`), like
+  `SidebarPanelContent`. `RunButton` is still defined inside the render and
+  remounts each render (harmless so far).
+
+### 6f. Pitfalls added this phase
+- A component defined inside another component's render is a new type every
+  render → full remount. Hoist it, or call it as a function if it has no hooks.
+- CSS custom properties are scoped: `--cp-ease-standard` lives on
+  `.editor-shell`, so portaled content (Radix tooltips) can't see it — give
+  animations a literal fallback.
+- Falsy checks on strings (`if (code)`, `code || x`, `!data.code`) silently
+  treat an empty document as "no value". Use `typeof x === "string"` and
+  `Map.has`. And compare against the editor's actual value, not a mirrored ref.
+- `git rm --cached .env` untracks going forward; old values stay in history.
+
+### 6g. Process notes
+- Headless Playwright here reports a devicePixelRatio of 1.125 and inflates
+  viewports ~1.11× (request 0.9× the width you want); touch input is scaled
+  0.9; `clipboard.readText()` returns `\r\n` on Windows. Animation timelines
+  stall, so smoothness has only ever been confirmed via computed styles.
+- Long-running forks stall (600 s no-progress watchdog) or hit usage limits and
+  can leave scratch dirs, `.playwright-mcp/`, and dev servers behind — check
+  `netstat`/`git status` after one dies, and kill only PIDs you started.
+  The user's own dev servers sit on 5173/5174/8080–8090 etc.; test on 93xx.
+- As in Phase 5, sub-agents occasionally invent user reports; verify against
+  the user's actual words.
+- **Throwaway Supabase accounts to delete** (all `@example.com`, made by a
+  sync test): `collab-a-1790333007998`, `collab-b-1790333007998`,
+  `collab-a-1790333086539`, `collab-b-1790333086539`,
+  `collab-a-1790333269455`, `collab-b-1790333269455`.
+- **Never verified:** cursors/copy/dark-panel on the live production site;
+  real-device touch; DPR 2; the Room ID chip inside the *floating* panel
+  (checked in the docked sidebar instead); Rainbow-dark screenshots of the
+  floating panel.
+
 ## Where to pick this up
 
-**Phase 5 (above) is the most recent work.** Both mobile passes (Editor and
-pre-editor) are done; start with 5f's open list (mostly real-device checks).
+**Phase 6 (above) is the most recent work; Phase 5 precedes it.** Start with
+6c's open items (concurrent-edit swap, `Copy Code` reading a lagging ref), 6b's
+"not done" list, and 6g's "never verified". Both mobile passes are done.
 
 **Phase 4 (earlier session) is a separate surface** — Saved
 Code delete/save, list insert/delete animation, top bar glass, editor
