@@ -33,6 +33,9 @@ export function readStoredTheme(): ThemeName {
 }
 export function readStoredMode(): ModeName {
   if (typeof window === "undefined") return DEFAULT_MODE;
+  // Portfolio embed/link contract: ?cp-mode=light|dark wins over storage.
+  const cp = new URLSearchParams(window.location.search).get(MODE_STORAGE_KEY);
+  if (isModeName(cp)) return cp;
   try {
     const stored = window.localStorage.getItem(MODE_STORAGE_KEY);
     return isModeName(stored) ? stored : DEFAULT_MODE;

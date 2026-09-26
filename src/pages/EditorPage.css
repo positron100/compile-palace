@@ -702,8 +702,95 @@
 /* The dominant section: grows to fill remaining space and gets a slightly
    stronger label so the roster reads as the panel's main content. */
 .editor-sidebar__section--people {
-  flex: 1;
+  /* Sized by its content (header + the animated fold), never by flex-grow:
+     toggling flex-grow between states can't be transitioned, so the section
+     used to jump to fill the panel and shove Saved Code down instantly. It may
+     still shrink (and scroll) when the panel is short. */
+  flex: 0 1 auto;
+  min-height: 0;
   overflow-y: auto;
+  /* Still scrolls (wheel/trackpad/touch/keyboard) with a long roster — only
+     the scrollbar chrome is hidden, matching the history list and output. */
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* legacy Edge */
+}
+.editor-sidebar__section--people::-webkit-scrollbar {
+  display: none; /* Chrome/Safari */
+}
+/* Extra breathing room under the roster while it's unfolded, easing in and
+   out with the fold so Saved Code doesn't sit tight against the last row. */
+.editor-sidebar__section--people {
+  transition: padding-bottom 0.35s cubic-bezier(0.65, 0, 0.35, 1);
+}
+.editor-sidebar__section--people[data-open="true"] {
+  padding-bottom: 2.25rem;
+}
+@media (prefers-reduced-motion: reduce) {
+  .editor-sidebar__section--people { transition: none; }
+}
+
+/* --- Foldable sections (People, Saved Code) ---------------------------
+   Height is animated with the same 0fr <-> 1fr grid-rows trick the history
+   rows use, so it opens to the content's real height with no measured
+   max-height. The body is `visibility: hidden` while folded (after the close
+   transition) so nothing inside stays focusable or announced. */
+.editor-fold__head {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0;
+  margin: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  border-radius: 0.5rem;
+}
+.editor-fold__head:focus-visible {
+  outline: 2px solid hsl(var(--cp-accent));
+  outline-offset: 3px;
+}
+.editor-fold__chevron {
+  flex: none;
+  opacity: 0.6;
+  transition: transform 0.35s cubic-bezier(0.65, 0, 0.35, 1), opacity 0.2s ease;
+}
+[data-open="true"] > .editor-fold__head .editor-fold__chevron,
+[data-open="true"] > div > .editor-fold__head .editor-fold__chevron {
+  transform: rotate(180deg);
+  opacity: 0.9;
+}
+.editor-fold {
+  display: grid;
+  grid-template-rows: 0fr;
+  flex: 1 1 auto;
+  min-height: 0;
+  transition: grid-template-rows 0.35s cubic-bezier(0.65, 0, 0.35, 1);
+}
+.editor-fold[data-open="true"] {
+  grid-template-rows: 1fr;
+}
+.editor-fold__inner {
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  padding-top: 0;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.25s ease, visibility 0s linear 0.35s, padding-top 0.35s ease;
+}
+.editor-fold[data-open="true"] > .editor-fold__inner {
+  opacity: 1;
+  visibility: visible;
+  padding-top: 0.5rem;
+  transition: opacity 0.3s ease 0.08s, visibility 0s, padding-top 0.35s ease;
+}
+@media (prefers-reduced-motion: reduce) {
+  .editor-fold, .editor-fold__inner, .editor-fold__chevron { transition: none; }
 }
 .editor-sidebar__section--people .editor-sidebar__label {
   font-size: 0.75rem;

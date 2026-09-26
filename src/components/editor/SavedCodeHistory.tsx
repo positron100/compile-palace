@@ -125,6 +125,8 @@ export function SavedCodeHistory({
   const [exitingId, setExitingId] = useState<string | null>(null);
   const listRef = useRef<HTMLUListElement>(null);
   const [canScrollDown, setCanScrollDown] = useState(false);
+  // Folded by default; the header toggles it.
+  const [open, setOpen] = useState(false);
   const reduceMotion = useReducedMotion();
 
   // Section 1/3 (this round) — new items (addItem prepends, so this is
@@ -247,12 +249,21 @@ export function SavedCodeHistory({
   };
 
   return (
-    <div className="editor-sidebar__section editor-sidebar__section--history">
-      <div className="flex items-center justify-between mb-1">
-        <div className="editor-sidebar__label" style={{ marginBottom: 0 }}>
-          <Clock3 size={11} className="inline -mt-0.5 mr-1 opacity-70" />
-          Saved Code
-        </div>
+    <div className="editor-sidebar__section editor-sidebar__section--history" data-open={open}>
+      <div className="flex items-center justify-between gap-2">
+        <button
+          type="button"
+          className="editor-fold__head"
+          aria-expanded={open}
+          aria-controls="editor-history-body"
+          onClick={() => setOpen((v) => !v)}
+        >
+          <span className="editor-sidebar__label" style={{ marginBottom: 0 }}>
+            <Clock3 size={11} className="inline -mt-0.5 mr-1 opacity-70" />
+            Saved Code
+          </span>
+          <ChevronDown size={13} className="editor-fold__chevron" aria-hidden="true" />
+        </button>
         <ModernTooltip content="New Code">
           <button type="button" className="cp-liquid editor-rail__icon-btn" style={{ height: "1.5rem", width: "1.5rem" }} onClick={onNewCode} aria-label="New code">
             <FilePlus size={13} />
@@ -260,6 +271,8 @@ export function SavedCodeHistory({
         </ModernTooltip>
       </div>
 
+      <div id="editor-history-body" className="editor-fold" data-open={open}>
+        <div className="editor-fold__inner">
       {status === "loading" && (
         <div className="text-xs opacity-50 italic py-2">Loading…</div>
       )}
@@ -335,6 +348,8 @@ export function SavedCodeHistory({
           </ModernTooltip>
         </div>
       )}
+        </div>
+      </div>
 
       <SaveCodeDialog
         open={!!renameTarget}

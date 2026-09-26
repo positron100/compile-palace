@@ -15,7 +15,7 @@ import { startEditorRevealTransition } from "@/lib/stageTransition";
 import ACTIONS from "../Actions";
 import { toast } from "sonner";
 import { submitCode, languageOptions } from "../services/compileService";
-import { Play, Copy, LogOut, DoorOpen, Users, Menu, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Check, Loader2, Pin, PinOff, PanelBottom, PanelRight, WandSparkles, Hash, Save } from "lucide-react";
+import { Play, Copy, LogOut, DoorOpen, Users, Menu, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Check, Loader2, Pin, PinOff, PanelBottom, PanelRight, WandSparkles, Hash, Save, ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { CopyIconSwap, CopyLabel } from "@/components/CopyIconSwap";
 import { useCopyFeedback } from "@/hooks/use-copy-feedback";
@@ -97,6 +97,8 @@ function EditorPage() {
   const [socketError, setSocketError] = useState(false);
 
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  // People starts folded; the header toggles it open/closed.
+  const [peopleOpen, setPeopleOpen] = useState(false);
   const mobileMenuOpenRef = useRef(false);
   mobileMenuOpenRef.current = mobileMenuOpen;
   const revealPendingRef = useRef(false);
@@ -724,8 +726,19 @@ function EditorPage() {
         </div>
       </div>
 
-      <div className="editor-sidebar__section editor-sidebar__section--people">
-        <div className="editor-sidebar__label">People {clients.length}</div>
+      <div className="editor-sidebar__section editor-sidebar__section--people" data-open={peopleOpen}>
+        <button
+          type="button"
+          className="editor-fold__head"
+          aria-expanded={peopleOpen}
+          aria-controls="editor-people-body"
+          onClick={() => setPeopleOpen((v) => !v)}
+        >
+          <span className="editor-sidebar__label" style={{ marginBottom: 0 }}>People {clients.length}</span>
+          <ChevronDown size={13} className="editor-fold__chevron" aria-hidden="true" />
+        </button>
+        <div id="editor-people-body" className="editor-fold" data-open={peopleOpen}>
+          <div className="editor-fold__inner">
         {clients.length > 0 ? (
           <div className="editor-roster">
             {clients.map((client) => (
@@ -742,6 +755,8 @@ function EditorPage() {
             {initialized ? "No users connected yet…" : "Connecting…"}
           </div>
         )}
+          </div>
+        </div>
       </div>
 
       <SavedCodeHistory
