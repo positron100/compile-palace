@@ -24,6 +24,25 @@
       href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap"
       rel="stylesheet"
     />
+    <!-- Set theme/mode before first paint so there is no flash. Mirrors the
+         resolution order in src/context/ThemeContext.tsx (readStoredTheme /
+         readStoredMode), which main.tsx otherwise only applies after the
+         module script downloads and executes. -->
+    <script>
+      (function () {
+        try {
+          var THEMES = ["lavender", "forest", "sunset", "rainbow"];
+          var theme = localStorage.getItem("cp-theme");
+          if (THEMES.indexOf(theme) === -1) theme = "lavender";
+          document.documentElement.setAttribute("data-theme", theme);
+
+          // Portfolio embed/link contract: ?cp-mode=light|dark wins over storage.
+          var cp = new URLSearchParams(location.search).get("cp-mode");
+          var mode = cp === "light" || cp === "dark" ? cp : localStorage.getItem("cp-mode");
+          document.documentElement.classList.toggle("dark", mode === "dark");
+        } catch (e) {}
+      })();
+    </script>
     <script>
       // Portfolio preview contract. Only when framed AND opened with ?cp-mode:
       // hide this document's own scrollbar (scrolling itself is untouched) and
