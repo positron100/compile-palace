@@ -1,5 +1,6 @@
 
 import React, { useEffect, useRef, useState } from 'react';
+import { usePageMeta } from "@/lib/seo";
 import { useNavigate as useRouterNavigate } from 'react-router-dom';
 import { v4 as uuidv4 } from 'uuid';
 import { toast } from "sonner";
@@ -14,8 +15,15 @@ import { useReducedMotion } from '@/hooks/use-reduced-motion';
 import { useStageTransitionNavigate } from '@/hooks/use-stage-transition-navigate';
 import { startStageTransition, supportsViewTransitions } from '@/lib/stageTransition';
 import { BrandLogo } from '@/components/BrandLogo';
+import { AboutSection } from '@/components/start/AboutSection';
 
 const Index = () => {
+  usePageMeta({
+    title: "Compile Palace — Real-Time Collaborative Code Editor",
+    description:
+      "Compile Palace is a real-time collaborative code editor. Create or join a room, write code together with live cursors, and run it in the browser in multiple languages.",
+    path: "/",
+  });
   const navigate = useStageTransitionNavigate();
   const routerNavigate = useRouterNavigate();
   const reduceMotion = useReducedMotion();
@@ -163,6 +171,7 @@ const Index = () => {
   // the sign-out circle (handleSignOut above) is what visibly reveals this.
   if ((!user && !holdRoomView) || signedOutView) {
     return (
+      <main>
       <div className="min-h-screen flex items-center justify-center cp-atmosphere relative overflow-hidden px-6 sm:px-8 py-10" style={{ minHeight: '100dvh' }}>
         <div className="relative z-10 flex flex-col items-center gap-8 w-full max-w-md">
           <LaptopIntro />
@@ -173,6 +182,9 @@ const Index = () => {
               Compile Palace
             </h1>
             <p className="text-muted-foreground mt-2">A collaborative coding environment — spin up a room and ship together.</p>
+            <p className="text-muted-foreground/80 mt-3 text-sm">
+              Edit code together with live cursors, run it in multiple languages, and save snippets to your own library.
+            </p>
           </div>
 
           <Button
@@ -222,6 +234,8 @@ const Index = () => {
           Built with ❤️ by Mukul
         </footer>
       </div>
+      <AboutSection />
+      </main>
     );
   }
 

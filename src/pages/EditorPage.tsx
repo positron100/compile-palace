@@ -1,5 +1,6 @@
 
 import React, { useEffect, useRef, useState, useCallback } from "react";
+import { usePageMeta } from "@/lib/seo";
 import { flushSync } from "react-dom";
 import Client from "../components/Client";
 import Editor, { EditorHandle } from "../components/Editor";
@@ -78,6 +79,7 @@ const LiquidButton = React.forwardRef<HTMLButtonElement, React.ButtonHTMLAttribu
 LiquidButton.displayName = "LiquidButton";
 
 function EditorPage() {
+  usePageMeta({ title: "Editor — Compile Palace", path: "/", noindex: true });
   const socketRef = useRef(null);
   const codeRef = useRef(null);
   const editorHandleRef = useRef<EditorHandle>(null);

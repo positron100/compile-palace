@@ -4,8 +4,14 @@ import { AuthCard, type AuthMode } from '@/components/auth/AuthCard';
 import { RoomJoinCard } from '@/components/room/RoomJoinCard';
 import { useAuth } from '@/context/AuthContext';
 import { useReducedMotion } from '@/hooks/use-reduced-motion';
+import { usePageMeta } from "@/lib/seo";
 
 const Auth = () => {
+  usePageMeta({
+    title: "Sign in or sign up — Compile Palace",
+    description: "Sign in to Compile Palace to create or join a collaborative coding room.",
+    path: "/auth",
+  });
   const navigate = useNavigate();
   const reduceMotion = useReducedMotion();
   const { user, loading } = useAuth();
