@@ -136,3 +136,12 @@ The frontend also emits `sync-request` / `sync-response`, which the server has n
 ## License
 
 MIT
+## Contributing
+
+Contributions, bug reports, and feature suggestions are welcome.
+
+To contribute:
+1. Fork the repository.
+2. Create a feature branch.
+3. Make your changes and test them locally.
+4. Open a pull request describing your changes.
